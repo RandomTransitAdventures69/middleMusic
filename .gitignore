@@ -208,6 +208,11 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# middleMusic runtime data and local music library
+data/
+music/
+**/.DS_Store
+
 # PyPI configuration file
 .pypirc
 

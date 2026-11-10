@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>middleMusic</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">middleMusic</div>
+          <div id="server-name" class="server-name">Loading…</div>
+        </div>
+        <div class="topbar-actions">
+          <button id="theme-toggle" class="secondary-button" type="button" aria-label="Toggle color theme">Theme</button>
+          <button id="logout-button" class="secondary-button hidden" type="button">Log out</button>
+        </div>
+      </header>
+
+      <aside class="sidebar">
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item active" data-view="home">Home</button>
+          <button class="nav-item" data-view="artists">Artists</button>
+          <button class="nav-item" data-view="albums">Albums</button>
+          <button class="nav-item" data-view="songs">Songs</button>
+          <button class="nav-item" data-view="playlists">Playlists</button>
+          <button class="nav-item" data-view="favorites">Favorites</button>
+          <button class="nav-item" data-view="search">Search</button>
+          <button class="nav-item" data-view="settings">Settings</button>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <section id="setup-panel" class="panel hidden">
+          <h2>Welcome to middleMusic</h2>
+          <p>Set up your admin account and choose the music folder you want to stream.</p>
+          <form id="setup-form" class="stacked-form">
+            <label>
+              Admin username
+              <input type="text" id="setup-username" name="username" required />
+            </label>
+            <label>
+              Password
+              <input type="password" id="setup-password" name="password" minlength="8" required />
+            </label>
+            <label>
+              Library folder
+              <input type="text" id="setup-library" name="library_path" />
+            </label>
+            <label>
+              Server name
+              <input type="text" id="setup-server-name" name="server_name" value="middleMusic" />
+            </label>
+            <button type="submit" class="primary-button">Complete setup</button>
+          </form>
+        </section>
+
+        <section id="login-panel" class="panel hidden">
+          <h2>Sign in</h2>
+          <form id="login-form" class="stacked-form">
+            <label>
+              Username
+              <input type="text" id="login-username" required />
+            </label>
+            <label>
+              Password
+              <input type="password" id="login-password" required />
+            </label>
+            <button type="submit" class="primary-button">Log in</button>
+          </form>
+        </section>
+
+        <section id="view-home" class="view-panel">
+          <div class="section-header">
+            <h2>Home</h2>
+          </div>
+          <div id="home-content" class="card-grid"></div>
+        </section>
+
+        <section id="view-artists" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Artists</h2>
+          </div>
+          <div id="artists-content" class="card-grid"></div>
+        </section>
+
+        <section id="view-albums" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Albums</h2>
+          </div>
+          <div id="albums-content" class="card-grid"></div>
+        </section>
+
+        <section id="view-songs" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Songs</h2>
+            <input id="search-input" type="search" placeholder="Search your library" />
+          </div>
+          <div id="songs-content" class="list"></div>
+        </section>
+
+        <section id="view-playlists" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Playlists</h2>
+            <button id="new-playlist-button" class="primary-button" type="button">New playlist</button>
+          </div>
+          <div id="playlists-content" class="card-grid"></div>
+        </section>
+
+        <section id="view-favorites" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Favorites</h2>
+          </div>
+          <div id="favorites-content" class="list"></div>
+        </section>
+
+        <section id="view-search" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Search</h2>
+            <input id="global-search-input" type="search" placeholder="Search albums, titles, and artists" />
+          </div>
+          <div id="search-content" class="list"></div>
+        </section>
+
+        <section id="view-settings" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Settings</h2>
+          </div>
+          <div id="settings-content" class="settings-card"></div>
+          <div class="button-row">
+            <button id="scan-library-button" class="primary-button" type="button">Scan library</button>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <footer class="player-bar">
+      <div class="player-info">
+        <div id="artwork" class="artwork placeholder-art"></div>
+        <div>
+          <strong id="track-title">Select a song</strong>
+          <div id="track-artist">Your music library</div>
+          <div id="track-album" class="player-album"></div>
+        </div>
+      </div>
+      <div class="player-controls">
+        <div class="control-row top-row">
+          <button id="shuffle-button" class="tiny-button" type="button" aria-label="Shuffle" title="Shuffle">⇄</button>
+          <button id="previous-button" class="tiny-button" type="button" aria-label="Previous track" title="Previous">⏮</button>
+          <button id="play-button" class="primary-button" type="button" aria-label="Play or pause">Play</button>
+          <button id="next-button" class="tiny-button" type="button" aria-label="Next track" title="Next">⏭</button>
+          <button id="repeat-button" class="tiny-button" type="button" aria-label="Repeat" title="Repeat">↻</button>
+        </div>
+        <div class="control-row timeline-row">
+          <span id="time-current">0:00</span>
+          <input id="seek-slider" type="range" min="0" max="100" value="0" />
+          <span id="time-total">0:00</span>
+        </div>
+      </div>
+      <div class="volume-box">
+        <label for="volume-slider">Volume</label>
+        <input id="volume-slider" type="range" min="0" max="100" value="60" />
+      </div>
+    </footer>
+
+    <audio id="audio-player" preload="metadata"></audio>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
