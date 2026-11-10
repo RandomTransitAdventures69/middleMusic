@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from mutagen import File as MutagenFile
+from mutagen import MutagenError
 
 from .config import ARTWORK_DIR
 from .database import delete_track_by_path, list_track_paths, upsert_track
@@ -69,7 +70,15 @@ def _find_artwork(audio: Any, file_path: str) -> str | None:
 def extract_metadata(file_path: str) -> dict[str, Any] | None:
     try:
         audio = MutagenFile(file_path, easy=False)
-    except Exception:
+    except (
+        MutagenError,
+        OSError,
+        ValueError,
+        TypeError,
+        IndexError,
+        KeyError,
+    ) as error:
+        logger.warning("Could not read audio metadata from %s: %s", file_path, error)
         return None
     if audio is None:
         return None
@@ -82,29 +91,41 @@ def extract_metadata(file_path: str) -> dict[str, Any] | None:
 
     title = _normalize_text(tags.get("TIT2", [None])[0] if tags.get("TIT2") else None)
     if not title:
-        title = _normalize_text(tags.get("title", [None])[0] if tags.get("title") else None)
+        title = _normalize_text(
+            tags.get("title", [None])[0] if tags.get("title") else None
+        )
     title = title or Path(file_path).stem
 
     artist = _normalize_text(tags.get("TPE1", [None])[0] if tags.get("TPE1") else None)
     if not artist:
-        artist = _normalize_text(tags.get("artist", [None])[0] if tags.get("artist") else None)
+        artist = _normalize_text(
+            tags.get("artist", [None])[0] if tags.get("artist") else None
+        )
     artist = artist or "Unknown Artist"
 
     album = _normalize_text(tags.get("TALB", [None])[0] if tags.get("TALB") else None)
     if not album:
-        album = _normalize_text(tags.get("album", [None])[0] if tags.get("album") else None)
+        album = _normalize_text(
+            tags.get("album", [None])[0] if tags.get("album") else None
+        )
     album = album or "Unknown Album"
 
-    album_artist = _normalize_text(tags.get("TPE2", [None])[0] if tags.get("TPE2") else None)
+    album_artist = _normalize_text(
+        tags.get("TPE2", [None])[0] if tags.get("TPE2") else None
+    )
     if not album_artist:
         album_artist = artist
 
     genre = _normalize_text(tags.get("TCON", [None])[0] if tags.get("TCON") else None)
     if not genre:
-        genre = _normalize_text(tags.get("genre", [None])[0] if tags.get("genre") else None)
+        genre = _normalize_text(
+            tags.get("genre", [None])[0] if tags.get("genre") else None
+        )
     genre = genre or "Unknown"
 
-    year_value = tags.get("TDRC", [None]) or tags.get("year", [None]) or tags.get("TYER", [None])
+    year_value = (
+        tags.get("TDRC", [None]) or tags.get("year", [None]) or tags.get("TYER", [None])
+    )
     year = None
     if year_value:
         first = _normalize_text(year_value[0])
@@ -141,7 +162,11 @@ def scan_library(root_path: str) -> dict[str, int]:
         raise FileNotFoundError(f"Library path does not exist: {root_path}")
 
     discovered = set()
-    for directory, _, files in os.walk(root):
+
+    def log_walk_error(error: OSError) -> None:
+        logger.warning("Could not scan directory %s: %s", error.filename, error)
+
+    for directory, _, files in os.walk(root, onerror=log_walk_error):
         for filename in files:
             if Path(filename).suffix.lower() in AUDIO_EXTENSIONS:
                 full_path = str(Path(directory) / filename)

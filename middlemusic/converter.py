@@ -5,12 +5,18 @@ import io
 import re
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Callable
 
-from .scanner import AUDIO_EXTENSIONS, extract_metadata
-from .spotify import get_track_metadata as get_spotify_metadata
+if __package__:
+    from .scanner import AUDIO_EXTENSIONS, extract_metadata
+    from .spotify import get_track_metadata as get_spotify_metadata
+else:
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+    from middlemusic.scanner import AUDIO_EXTENSIONS, extract_metadata
+    from middlemusic.spotify import get_track_metadata as get_spotify_metadata
 
 BITRATES = {"128k", "192k", "256k", "320k"}
 MAPPED_FIELDS = (
@@ -42,7 +48,9 @@ def parse_csv(content: bytes, mapping: dict[str, str]) -> list[dict[str, str]]:
     for field in MAPPED_FIELDS[1:]:
         column = (mapping.get(field) or "").strip()
         if column and column not in headers:
-            raise ValueError(f"CSV has no {field.replace('_', ' ')} column named '{column}'.")
+            raise ValueError(
+                f"CSV has no {field.replace('_', ' ')} column named '{column}'."
+            )
         selected_columns[field] = column
 
     rows = []
@@ -71,7 +79,9 @@ def _ffmpeg_executable() -> str:
     try:
         import imageio_ffmpeg
     except ImportError as error:
-        raise RuntimeError("FFmpeg is unavailable. Reinstall middleMusic dependencies.") from error
+        raise RuntimeError(
+            "FFmpeg is unavailable. Reinstall middleMusic dependencies."
+        ) from error
     executable = imageio_ffmpeg.get_ffmpeg_exe()
     if Path(executable).is_file() or shutil.which(executable):
         return executable
@@ -80,7 +90,9 @@ def _ffmpeg_executable() -> str:
 
 def _resolve_source(source_value: str, library_root: Path) -> Path:
     if re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", source_value):
-        raise ValueError("Remote audio URLs are not supported; use a local library file.")
+        raise ValueError(
+            "Remote audio URLs are not supported; use a local library file."
+        )
 
     root = library_root.resolve(strict=True)
     candidate = Path(source_value)
@@ -151,10 +163,16 @@ def _transcode(
         if value not in (None, ""):
             arguments.extend(["-metadata", f"{tag}={value}"])
     arguments.append(str(output))
-    result = subprocess.run(arguments, capture_output=True, text=True, timeout=3600, check=False)
+    result = subprocess.run(
+        arguments, capture_output=True, text=True, timeout=3600, check=False
+    )
     if result.returncode:
         message = result.stderr.strip().splitlines()
-        raise RuntimeError(message[-1][:500] if message else "FFmpeg could not convert this audio file.")
+        raise RuntimeError(
+            message[-1][:500]
+            if message
+            else "FFmpeg could not convert this audio file."
+        )
 
 
 def convert_rows(
@@ -188,13 +206,19 @@ def convert_rows(
             output = _output_path(metadata, source, output_dir)
             _transcode(source, output, metadata, bitrate)
             outputs.append(output.name)
-            result = {"source": row.get("source", ""), "output": output.name, "status": "completed"}
+            result = {
+                "source": row.get("source", ""),
+                "output": output.name,
+                "status": "completed",
+            }
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             if output is not None:
                 try:
                     output.unlink(missing_ok=True)
                 except OSError as cleanup_error:
-                    error = RuntimeError(f"{error} (could not remove partial output: {cleanup_error})")
+                    error = RuntimeError(
+                        f"{error} (could not remove partial output: {cleanup_error})"
+                    )
             errors.append(
                 {
                     "line_number": row.get("line_number", ""),
@@ -213,3 +237,9 @@ def convert_rows(
                 progress(index, len(items), result)
 
     return outputs, errors
+
+
+if __name__ == "__main__":
+    from middlemusic.cli import main
+
+    raise SystemExit(main())

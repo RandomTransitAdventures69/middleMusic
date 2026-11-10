@@ -1,8 +1,11 @@
+import logging
 from pathlib import Path
 from threading import Thread
 
 from .converter import convert_rows
 from .database import create_conversion_job, update_conversion_job
+
+logger = logging.getLogger(__name__)
 
 
 def _process(
@@ -30,12 +33,21 @@ def _process(
         update_conversion_job(job_id, "running", completed, outputs, errors)
 
     try:
-        outputs, errors = convert_rows(rows, library_root, output_dir, bitrate, report_progress)
-        status = "completed" if not errors else ("completed_with_errors" if outputs else "failed")
+        outputs, errors = convert_rows(
+            rows, library_root, output_dir, bitrate, report_progress
+        )
+        status = (
+            "completed"
+            if not errors
+            else ("completed_with_errors" if outputs else "failed")
+        )
         update_conversion_job(job_id, status, len(rows), outputs, errors)
     except Exception as error:
+        logger.exception("Conversion job %s failed unexpectedly", job_id)
         errors.append({"line_number": "", "source": "", "message": str(error)[:500]})
-        update_conversion_job(job_id, "failed", len(outputs) + len(errors), outputs, errors)
+        update_conversion_job(
+            job_id, "failed", len(outputs) + len(errors), outputs, errors
+        )
 
 
 def start_conversion_job(

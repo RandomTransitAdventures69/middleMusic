@@ -20,8 +20,13 @@ def parse_track_id(reference: str) -> str:
     value = reference.strip()
     parsed = urlparse(value)
     if parsed.scheme:
-        if parsed.scheme != "https" or parsed.hostname not in {"open.spotify.com", "www.open.spotify.com"}:
-            raise ValueError("Spotify metadata accepts a Spotify track ID or open.spotify.com track URL.")
+        if parsed.scheme != "https" or parsed.hostname not in {
+            "open.spotify.com",
+            "www.open.spotify.com",
+        }:
+            raise ValueError(
+                "Spotify metadata accepts a Spotify track ID or open.spotify.com track URL."
+            )
         parts = parsed.path.strip("/").split("/")
         if len(parts) < 2 or parts[0] != "track":
             raise ValueError("Spotify URL must point to a track.")
@@ -43,7 +48,9 @@ def _access_token() -> str:
             raise RuntimeError(
                 "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to look up Spotify metadata."
             )
-        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode("ascii")
+        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode(
+            "ascii"
+        )
         request = Request(
             "https://accounts.spotify.com/api/token",
             data=b"grant_type=client_credentials",
@@ -57,14 +64,20 @@ def _access_token() -> str:
             with urlopen(request, timeout=15) as response:
                 token_data = json.loads(response.read())
         except HTTPError as error:
-            raise RuntimeError(f"Spotify authentication returned HTTP {error.code}.") from error
+            raise RuntimeError(
+                f"Spotify authentication returned HTTP {error.code}."
+            ) from error
         except URLError as error:
-            raise RuntimeError(f"Spotify authentication failed: {error.reason}.") from error
+            raise RuntimeError(
+                f"Spotify authentication failed: {error.reason}."
+            ) from error
         token = token_data.get("access_token")
         if not isinstance(token, str) or not token:
             raise RuntimeError("Spotify did not return an access token.")
         _cached_token = token
-        _token_expires_at = time.monotonic() + max(int(token_data.get("expires_in", 3600)) - 60, 0)
+        _token_expires_at = time.monotonic() + max(
+            int(token_data.get("expires_in", 3600)) - 60, 0
+        )
         return token
 
 
@@ -78,9 +91,13 @@ def get_track_metadata(reference: str) -> dict[str, str]:
         with urlopen(request, timeout=15) as response:
             track = json.loads(response.read())
     except HTTPError as error:
-        raise RuntimeError(f"Spotify metadata lookup returned HTTP {error.code}.") from error
+        raise RuntimeError(
+            f"Spotify metadata lookup returned HTTP {error.code}."
+        ) from error
     except URLError as error:
-        raise RuntimeError(f"Spotify metadata lookup failed: {error.reason}.") from error
+        raise RuntimeError(
+            f"Spotify metadata lookup failed: {error.reason}."
+        ) from error
 
     album = track.get("album") or {}
     artists = track.get("artists") or []
@@ -88,9 +105,13 @@ def get_track_metadata(reference: str) -> dict[str, str]:
     release_date = album.get("release_date") or ""
     metadata = {
         "title": track.get("name") or "",
-        "artist": ", ".join(item.get("name", "") for item in artists if item.get("name")),
+        "artist": ", ".join(
+            item.get("name", "") for item in artists if item.get("name")
+        ),
         "album": album.get("name") or "",
-        "album_artist": ", ".join(item.get("name", "") for item in album_artists if item.get("name")),
+        "album_artist": ", ".join(
+            item.get("name", "") for item in album_artists if item.get("name")
+        ),
         "track_number": str(track.get("track_number") or ""),
         "year": release_date[:4],
     }

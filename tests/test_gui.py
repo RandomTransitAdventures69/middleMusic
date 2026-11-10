@@ -1,4 +1,5 @@
 import unittest
+from contextlib import ExitStack
 from unittest.mock import Mock, patch
 
 from middlemusic import gui
@@ -11,11 +12,12 @@ class GuiTests(unittest.TestCase):
         server.serve_forever.side_effect = KeyboardInterrupt
         timer = Mock()
 
-        with (
-            patch.object(gui, "create_app"),
-            patch.object(gui, "make_server", return_value=server),
-            patch.object(gui.threading, "Timer", return_value=timer),
-        ):
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(gui, "create_app"))
+            stack.enter_context(patch.object(gui, "make_server", return_value=server))
+            stack.enter_context(
+                patch.object(gui.threading, "Timer", return_value=timer)
+            )
             gui.main()
 
         self.assertTrue(timer.daemon)

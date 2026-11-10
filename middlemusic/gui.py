@@ -11,7 +11,10 @@ def _open_browser(address: str) -> None:
     try:
         opened = webbrowser.open(address)
     except (OSError, webbrowser.Error) as error:
-        print(f"Could not open a browser: {error}. Visit {address} manually.", file=sys.stderr)
+        print(
+            f"Could not open a browser: {error}. Visit {address} manually.",
+            file=sys.stderr,
+        )
         return
     if not opened:
         print(f"Could not open a browser. Visit {address} manually.", file=sys.stderr)

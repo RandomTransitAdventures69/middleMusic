@@ -53,6 +53,10 @@ def create_app():
         if session.get("user_id") is None:
             return abort(401, description="Authentication required")
 
+    def json_payload():
+        payload = request.get_json(silent=True)
+        return payload if isinstance(payload, dict) else {}
+
     def serialize_track(track):
         item = dict(track)
         artwork_path = item.pop("artwork_path", None)
@@ -66,7 +70,9 @@ def create_app():
             "status": job["status"],
             "total": job["total"],
             "completed": job["completed"],
-            "progress": round(job["completed"] / job["total"] * 100) if job["total"] else 0,
+            "progress": round(job["completed"] / job["total"] * 100)
+            if job["total"]
+            else 0,
             "outputs": [
                 {
                     "name": name,
@@ -100,12 +106,15 @@ def create_app():
 
     @app.post("/api/setup")
     def setup():
-        payload = request.get_json(silent=True) or {}
+        payload = json_payload()
         username = payload.get("username", "")
         password = payload.get("password", "")
         library_path = payload.get("library_path", str(LIBRARY_PATH))
         server_name = payload.get("server_name", "middleMusic")
-        if not all(isinstance(value, str) for value in (username, password, library_path, server_name)):
+        if not all(
+            isinstance(value, str)
+            for value in (username, password, library_path, server_name)
+        ):
             return jsonify({"error": "Setup values must be text."}), 400
         username = username.strip()
         library_path = library_path.strip()
@@ -114,11 +123,17 @@ def create_app():
         if count_rows("users") > 0:
             return jsonify({"error": "Setup already completed."}), 400
         if not username or len(password) < 8:
-            return jsonify({"error": "Create a username and a password at least 8 characters long."}), 400
+            return jsonify(
+                {
+                    "error": "Create a username and a password at least 8 characters long."
+                }
+            ), 400
         if len(username) > 80 or len(server_name) > 120:
             return jsonify({"error": "Username or server name is too long."}), 400
         if not library_path or not Path(library_path).is_dir():
-            return jsonify({"error": "That music folder does not exist or is not a folder."}), 400
+            return jsonify(
+                {"error": "That music folder does not exist or is not a folder."}
+            ), 400
 
         user = create_user(username, generate_password_hash(password))
         set_setting("library_path", library_path)
@@ -126,18 +141,25 @@ def create_app():
         session["user_id"] = user["id"]
         session["username"] = user["username"]
 
-        return jsonify({"success": True, "user": {"id": user["id"], "username": user["username"]}})
+        return jsonify(
+            {"success": True, "user": {"id": user["id"], "username": user["username"]}}
+        )
 
     @app.get("/api/session")
     def session_state():
         user_id = session.get("user_id")
         if user_id is None:
             return jsonify({"logged_in": False})
-        return jsonify({"logged_in": True, "user": {"id": user_id, "username": session.get("username")}})
+        return jsonify(
+            {
+                "logged_in": True,
+                "user": {"id": user_id, "username": session.get("username")},
+            }
+        )
 
     @app.post("/api/login")
     def login():
-        payload = request.get_json(silent=True) or {}
+        payload = json_payload()
         username = payload.get("username", "")
         password = payload.get("password", "")
         if not isinstance(username, str) or not isinstance(password, str):
@@ -150,7 +172,9 @@ def create_app():
 
         session["user_id"] = user["id"]
         session["username"] = user["username"]
-        return jsonify({"success": True, "user": {"id": user["id"], "username": user["username"]}})
+        return jsonify(
+            {"success": True, "user": {"id": user["id"], "username": user["username"]}}
+        )
 
     @app.post("/api/logout")
     def logout():
@@ -201,7 +225,13 @@ def create_app():
     def search():
         requires_login()
         query = (request.args.get("q") or "").strip()
-        return jsonify({"tracks": [serialize_track(item) for item in get_tracks(limit=200, query=query)]})
+        return jsonify(
+            {
+                "tracks": [
+                    serialize_track(item) for item in get_tracks(limit=200, query=query)
+                ]
+            }
+        )
 
     @app.get("/api/home")
     def home():
@@ -209,7 +239,9 @@ def create_app():
         return jsonify(
             {
                 "recently_played": [],
-                "recently_added": [serialize_track(track) for track in get_recent_tracks(limit=8)],
+                "recently_added": [
+                    serialize_track(track) for track in get_recent_tracks(limit=8)
+                ],
                 "favorite_albums": [dict(item) for item in get_random_albums(limit=6)],
             }
         )
@@ -230,11 +262,26 @@ def create_app():
     @app.post("/api/favorites/toggle")
     def toggle_favorite_endpoint():
         requires_login()
-        payload = request.get_json(silent=True) or {}
+        payload = json_payload()
         media_type = payload.get("media_type")
         media_key = payload.get("media_key")
-        if media_type not in {"track", "album"} or media_key is None:
+        if (
+            not isinstance(media_type, str)
+            or media_type not in {"track", "album"}
+            or isinstance(media_key, bool)
+            or not isinstance(media_key, (str, int))
+            or not str(media_key).strip()
+            or len(str(media_key)) > 200
+        ):
             return jsonify({"error": "Choose a track or album to favorite."}), 400
+        if media_type == "track":
+            try:
+                track_id = int(media_key)
+            except ValueError:
+                return jsonify({"error": "Choose a valid track."}), 400
+            if get_track_by_id(track_id) is None:
+                return jsonify({"error": "Choose a valid track."}), 400
+            media_key = str(track_id)
         active = toggle_favorite(session["user_id"], media_type, str(media_key))
         return jsonify({"success": True, "active": active})
 
@@ -243,13 +290,15 @@ def create_app():
         requires_login()
         items = get_playlists_for_user(session["user_id"])
         for playlist in items:
-            playlist["tracks"] = [serialize_track(track) for track in playlist["tracks"]]
+            playlist["tracks"] = [
+                serialize_track(track) for track in playlist["tracks"]
+            ]
         return jsonify({"playlists": items})
 
     @app.post("/api/playlists")
     def create_playlist_endpoint():
         requires_login()
-        payload = request.get_json(silent=True) or {}
+        payload = json_payload()
         name = payload.get("name", "")
         if not isinstance(name, str):
             return jsonify({"error": "Playlist name must be text."}), 400
@@ -264,9 +313,13 @@ def create_app():
     @app.post("/api/playlists/<int:playlist_id>/tracks")
     def add_track_to_playlist_endpoint(playlist_id: int):
         requires_login()
-        payload = request.get_json(silent=True) or {}
+        payload = json_payload()
         track_id = payload.get("track_id")
-        if not isinstance(track_id, int) or get_track_by_id(track_id) is None:
+        if (
+            not isinstance(track_id, int)
+            or isinstance(track_id, bool)
+            or get_track_by_id(track_id) is None
+        ):
             return jsonify({"error": "Choose a valid track."}), 400
         user_playlists = get_playlists_for_user(session["user_id"])
         if not any(item["id"] == playlist_id for item in user_playlists):
@@ -286,14 +339,17 @@ def create_app():
         try:
             mapping = json.loads(request.form.get("mapping", "{}"))
             if not isinstance(mapping, dict) or not all(
-                isinstance(key, str) and isinstance(value, str) for key, value in mapping.items()
+                isinstance(key, str) and isinstance(value, str)
+                for key, value in mapping.items()
             ):
                 raise ValueError("Column mapping must contain text values.")
             rows = parse_csv(content, mapping)
         except (json.JSONDecodeError, ValueError) as error:
             return jsonify({"error": str(error)}), 400
         if len(rows) > 2000:
-            return jsonify({"error": "A conversion job can contain at most 2,000 files."}), 400
+            return jsonify(
+                {"error": "A conversion job can contain at most 2,000 files."}
+            ), 400
 
         bitrate = request.form.get("bitrate", "192k")
         if bitrate not in BITRATES:
@@ -302,12 +358,20 @@ def create_app():
         folder_name = request.form.get("output_directory", "Converted Files").strip()
         if not folder_name:
             folder_name = "Converted Files"
-        if len(folder_name) > 80 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _.()-]*", folder_name):
-            return jsonify({"error": "Output folder may contain only letters, numbers, spaces, and -_.()."}), 400
+        if len(folder_name) > 80 or not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9 _.()-]*", folder_name
+        ):
+            return jsonify(
+                {
+                    "error": "Output folder may contain only letters, numbers, spaces, and -_.()."
+                }
+            ), 400
 
         library_root = Path(get_setting("library_path") or LIBRARY_PATH)
         if not library_root.is_dir():
-            return jsonify({"error": "The configured music library folder is unavailable."}), 400
+            return jsonify(
+                {"error": "The configured music library folder is unavailable."}
+            ), 400
         job_id = uuid.uuid4().hex
         output_root = (DATA_DIR / "converted").resolve()
         output_dir = (output_root / folder_name / job_id).resolve()
@@ -316,8 +380,12 @@ def create_app():
         except ValueError:
             return jsonify({"error": "Invalid output folder."}), 400
 
-        start_conversion_job(job_id, session["user_id"], rows, library_root, output_dir, bitrate)
-        return jsonify({"success": True, "job": {"id": job_id, "status": "queued"}}), 202
+        start_conversion_job(
+            job_id, session["user_id"], rows, library_root, output_dir, bitrate
+        )
+        return jsonify(
+            {"success": True, "job": {"id": job_id, "status": "queued"}}
+        ), 202
 
     @app.get("/api/conversions")
     def conversions():
@@ -343,7 +411,11 @@ def create_app():
     def download_conversion_output(job_id: str, filename: str):
         requires_login()
         job = get_conversion_job(job_id, session["user_id"])
-        if job is None or filename not in job["outputs"] or Path(filename).name != filename:
+        if (
+            job is None
+            or filename not in job["outputs"]
+            or Path(filename).name != filename
+        ):
             abort(404)
         converted_root = (DATA_DIR / "converted").resolve()
         try:

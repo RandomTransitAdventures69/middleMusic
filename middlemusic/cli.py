@@ -10,9 +10,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Convert local music files listed in a CSV to tagged MP3 files."
     )
-    parser.add_argument("csv_file", type=Path, help="CSV file containing local music paths")
-    parser.add_argument("--library", type=Path, default=LIBRARY_PATH, help="Root of the local music library")
-    parser.add_argument("--output", type=Path, required=True, help="Directory for converted MP3 files")
+    parser.add_argument(
+        "csv_file", type=Path, help="CSV file containing local music paths"
+    )
+    parser.add_argument(
+        "--library",
+        type=Path,
+        default=LIBRARY_PATH,
+        help="Root of the local music library",
+    )
+    parser.add_argument(
+        "--output", type=Path, required=True, help="Directory for converted MP3 files"
+    )
     parser.add_argument("--bitrate", choices=sorted(BITRATES), default="192k")
     for field in MAPPED_FIELDS:
         default = "source" if field == "source" else ""
@@ -28,8 +37,7 @@ def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     mapping: dict[str, str] = {
-        field: getattr(args, f"{field}_column")
-        for field in MAPPED_FIELDS
+        field: getattr(args, f"{field}_column") for field in MAPPED_FIELDS
     }
 
     try:
@@ -40,7 +48,9 @@ def main(argv=None) -> int:
             name = result.get("output") or result.get("source") or "row"
             print(f"[{completed}/{total}] {result['status']}: {name}", file=sys.stderr)
 
-        outputs, errors = convert_rows(rows, args.library, args.output, args.bitrate, report_progress)
+        outputs, errors = convert_rows(
+            rows, args.library, args.output, args.bitrate, report_progress
+        )
     except (OSError, ValueError, RuntimeError) as error:
         parser.error(str(error))
 

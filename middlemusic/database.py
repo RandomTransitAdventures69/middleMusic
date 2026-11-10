@@ -89,7 +89,9 @@ def init_db() -> None:
 
 def get_setting(key: str, default: str | None = None) -> str | None:
     connection = get_connection()
-    row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
+    row = connection.execute(
+        "SELECT value FROM settings WHERE key = ?", (key,)
+    ).fetchone()
     connection.close()
     if row is None:
         return default
@@ -115,7 +117,9 @@ def list_users() -> list[sqlite3.Row]:
 
 def get_user_by_username(username: str) -> sqlite3.Row | None:
     connection = get_connection()
-    row = connection.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+    row = connection.execute(
+        "SELECT * FROM users WHERE username = ?", (username,)
+    ).fetchone()
     connection.close()
     return row
 
@@ -127,14 +131,18 @@ def create_user(username: str, password_hash: str) -> sqlite3.Row:
         (username, password_hash),
     )
     connection.commit()
-    row = connection.execute("SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    row = connection.execute(
+        "SELECT * FROM users WHERE id = ?", (cursor.lastrowid,)
+    ).fetchone()
     connection.close()
     return row
 
 
 def count_rows(table_name: str) -> int:
     connection = get_connection()
-    result = connection.execute(f"SELECT COUNT(*) AS count FROM {table_name}").fetchone()
+    result = connection.execute(
+        f"SELECT COUNT(*) AS count FROM {table_name}"
+    ).fetchone()
     connection.close()
     return int(result["count"])
 
@@ -156,7 +164,9 @@ def upsert_track(metadata: dict[str, Any]) -> bool:
                 metadata["title"],
                 metadata.get("artist") or "Unknown Artist",
                 metadata.get("album") or "Unknown Album",
-                metadata.get("album_artist") or metadata.get("artist") or "Unknown Artist",
+                metadata.get("album_artist")
+                or metadata.get("artist")
+                or "Unknown Artist",
                 metadata.get("genre") or "Unknown",
                 metadata.get("duration") or 0,
                 metadata.get("track_number"),
@@ -221,7 +231,9 @@ def get_tracks(limit: int = 200, query: str = "") -> list[sqlite3.Row]:
 
 def get_track_by_id(track_id: int) -> sqlite3.Row | None:
     connection = get_connection()
-    row = connection.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
+    row = connection.execute(
+        "SELECT * FROM tracks WHERE id = ?", (track_id,)
+    ).fetchone()
     connection.close()
     return row
 
@@ -274,7 +286,9 @@ def create_playlist(name: str, user_id: int) -> sqlite3.Row:
         (name, user_id),
     )
     connection.commit()
-    row = connection.execute("SELECT * FROM playlists WHERE id = ?", (cursor.lastrowid,)).fetchone()
+    row = connection.execute(
+        "SELECT * FROM playlists WHERE id = ?", (cursor.lastrowid,)
+    ).fetchone()
     connection.close()
     return row
 
@@ -352,7 +366,9 @@ def get_random_albums(limit: int = 6) -> list[sqlite3.Row]:
     return rows
 
 
-def create_conversion_job(job_id: str, user_id: int, total: int, output_dir: str) -> None:
+def create_conversion_job(
+    job_id: str, user_id: int, total: int, output_dir: str
+) -> None:
     connection = get_connection()
     connection.execute(
         "INSERT INTO conversion_jobs(id, user_id, status, total, output_dir) VALUES(?, ?, 'queued', ?, ?)",

@@ -2,10 +2,13 @@ import io
 import json
 import os
 import struct
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
 import wave
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +19,20 @@ from middlemusic.converter import convert_rows, parse_csv
 
 
 class ConverterTests(unittest.TestCase):
+    def test_converter_script_runs_as_cli(self):
+        converter_script = (
+            Path(__file__).resolve().parents[1] / "middlemusic" / "converter.py"
+        )
+        result = subprocess.run(
+            [sys.executable, str(converter_script), "--help"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("CSV file containing local music paths", result.stdout)
+
     def test_csv_column_mapping(self):
         rows = parse_csv(
             b"File,Song,Performer\nalbum/one.flac,Song One,Artist One\n",
@@ -98,13 +115,25 @@ class ConverterTests(unittest.TestCase):
                 }
             ).encode()
         )
-        with (
-            patch.dict(os.environ, {"SPOTIFY_CLIENT_ID": "id", "SPOTIFY_CLIENT_SECRET": "secret"}),
-            patch.object(spotify, "_cached_token", None),
-            patch.object(spotify, "_token_expires_at", 0),
-            patch.object(spotify, "urlopen", side_effect=[token_response, track_response]),
-        ):
-            metadata = spotify.get_track_metadata(f"https://open.spotify.com/track/{track_id}?si=example")
+        with ExitStack() as stack:
+            stack.enter_context(
+                patch.dict(
+                    os.environ,
+                    {"SPOTIFY_CLIENT_ID": "id", "SPOTIFY_CLIENT_SECRET": "secret"},
+                )
+            )
+            stack.enter_context(patch.object(spotify, "_cached_token", None))
+            stack.enter_context(patch.object(spotify, "_token_expires_at", 0))
+            stack.enter_context(
+                patch.object(
+                    spotify,
+                    "urlopen",
+                    side_effect=[token_response, track_response],
+                )
+            )
+            metadata = spotify.get_track_metadata(
+                f"https://open.spotify.com/track/{track_id}?si=example"
+            )
 
         self.assertEqual(metadata["title"], "Song")
         self.assertEqual(metadata["artist"], "Artist")
@@ -125,10 +154,11 @@ class ConverterTests(unittest.TestCase):
                 audio_file.setframerate(22050)
                 audio_file.writeframes(struct.pack("<h", 0) * 22050)
 
-            with (
-                patch("middlemusic.database.DB_PATH", root / "test.db"),
-                patch("middlemusic.app.DATA_DIR", data_dir),
-            ):
+            with ExitStack() as stack:
+                stack.enter_context(
+                    patch("middlemusic.database.DB_PATH", root / "test.db")
+                )
+                stack.enter_context(patch("middlemusic.app.DATA_DIR", data_dir))
                 client = create_app().test_client()
                 setup = client.post(
                     "/api/setup",
@@ -143,8 +173,15 @@ class ConverterTests(unittest.TestCase):
                 response = client.post(
                     "/api/conversions",
                     data={
-                        "csv_file": (io.BytesIO(b"path,Title,Artist\nweb-test.wav,Web Test,Test Artist\n"), "tracks.csv"),
-                        "mapping": json.dumps({"source": "path", "title": "Title", "artist": "Artist"}),
+                        "csv_file": (
+                            io.BytesIO(
+                                b"path,Title,Artist\nweb-test.wav,Web Test,Test Artist\n"
+                            ),
+                            "tracks.csv",
+                        ),
+                        "mapping": json.dumps(
+                            {"source": "path", "title": "Title", "artist": "Artist"}
+                        ),
                         "bitrate": "128k",
                         "output_directory": "Web Tests",
                     },
