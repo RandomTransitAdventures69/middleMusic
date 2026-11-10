@@ -1,0 +1,90 @@
+Cross-Platform Support and Application Interfaces
+
+The application must be designed to work across Linux, Windows, macOS, iOS, and Android.
+
+The primary goal is to make the application accessible regardless of the user's operating system.
+
+Do not assume that every platform will use the same interface or installation method.
+
+Desktop Support
+
+Support Windows, Linux, and macOS.
+
+Provide two separate ways to interact with the application:
+
+1. A command-line interface (CLI).
+2. A standalone graphical user interface (GUI).
+
+The CLI and GUI must use the same underlying conversion engine.
+
+The GUI must not be a separate implementation of the conversion logic.
+
+The CLI should support:
+- CSV input.
+- Configurable CSV column mapping.
+- Spotify metadata retrieval.
+- Source URL selection.
+- Output directory configuration.
+- MP3 quality settings.
+- Metadata tagging.
+- Job processing.
+- Error reporting.
+- Progress reporting.
+
+The GUI should provide equivalent functionality through a graphical interface.
+
+The GUI should be a separate application or independently launchable interface.
+
+Users must not be required to use the CLI to configure or operate the GUI.
+
+The application should support both interactive and unattended processing where practical.
+
+Mobile Support
+
+Support iOS and Android through an appropriate mobile-friendly architecture.
+
+Do not attempt to force the desktop GUI onto mobile devices.
+
+For iOS and Android, recommend existing compatible music-player applications rather than unnecessarily developing a custom music player.
+
+Where a compatible server or streaming protocol is implemented, recommend established applications that support it.
+
+For example, recommend appropriate Subsonic-compatible music players for iOS and Android when Subsonic API compatibility is available.
+
+Do not claim compatibility with Subsonic or any other protocol unless the application actually implements it.
+
+If the application does not provide a compatible music streaming server, explain that mobile users can access the conversion interface through a mobile browser where practical.
+
+The mobile interface should prioritize:
+- CSV import.
+- Job monitoring.
+- Conversion status.
+- Basic configuration.
+- Viewing completed files.
+
+Do not require users to install Docker on any platform.
+
+Architecture
+
+Keep the conversion engine separate from the user interfaces.
+
+The architecture should consist of:
+
+- A shared conversion engine.
+- A command-line interface.
+- A standalone desktop GUI.
+- A local web interface where appropriate.
+- A mobile-friendly interface.
+- Shared configuration and job management.
+
+The GUI, CLI, and web interface should all use the same core processing logic.
+
+Avoid duplicating code across interfaces.
+
+The application must remain maintainable and modular.
+
+Do not introduce unnecessary complexity simply to claim support for every platform.
+
+Before implementing platform-specific functionality, inspect the existing project and identify the most practical approach.
+
+Prioritize working functionality over superficial cross-platform support.
