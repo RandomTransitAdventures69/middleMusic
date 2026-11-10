@@ -63,7 +63,7 @@ async function loadConversionJobs() {
   elements.conversionJobs.innerHTML = jobs.map((job) => `
     <article class="conversion-job">
       <div class="job-heading">
-        <strong>${escapeHtml(job.status.replaceAll('_', ' '))}</strong>
+        <strong>${escapeHtml(job.status.replace(/_/g, ' '))}</strong>
         <span>${job.completed} / ${job.total} files</span>
       </div>
       <progress value="${job.progress}" max="100" aria-label="${job.progress}% complete"></progress>

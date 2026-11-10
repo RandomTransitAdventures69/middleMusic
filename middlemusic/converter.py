@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Tuple
 
 from .scanner import AUDIO_EXTENSIONS, extract_metadata
+from .spotify import get_track_metadata as get_spotify_metadata
 
 BITRATES = {"128k", "192k", "256k", "320k"}
 MAPPED_FIELDS = (
@@ -18,6 +19,7 @@ MAPPED_FIELDS = (
     "genre",
     "track_number",
     "year",
+    "spotify_track_id",
 )
 
 
@@ -67,7 +69,10 @@ def _ffmpeg_executable() -> str:
         import imageio_ffmpeg
     except ImportError as error:
         raise RuntimeError("FFmpeg is unavailable. Reinstall middleMusic dependencies.") from error
-    return imageio_ffmpeg.get_ffmpeg_exe()
+    executable = imageio_ffmpeg.get_ffmpeg_exe()
+    if Path(executable).is_file() or shutil.which(executable):
+        return executable
+    raise RuntimeError("Bundled FFmpeg executable is unavailable.")
 
 
 def _resolve_source(source_value: str, library_root: Path) -> Path:
@@ -88,7 +93,8 @@ def _resolve_source(source_value: str, library_root: Path) -> Path:
 
 
 def _safe_filename(value: str) -> str:
-    cleaned = re.sub(r'[<>:"/\\\\|?*\\x00-\\x1f]', "_", value).strip(" .")
+    cleaned = re.sub(r'[<>:"/\\|?*]', "_", value)
+    cleaned = re.sub(r"[\x00-\x1f]", "_", cleaned).strip(" .")
     return cleaned[:160] or "untitled"
 
 
@@ -169,8 +175,11 @@ def convert_rows(
         try:
             source = _resolve_source(row.get("source", ""), library_root)
             metadata = extract_metadata(str(source)) or {}
+            spotify_reference = row.get("spotify_track_id", "")
+            if spotify_reference:
+                metadata.update(get_spotify_metadata(spotify_reference))
             for field in MAPPED_FIELDS[1:]:
-                if row.get(field):
+                if field != "spotify_track_id" and row.get(field):
                     metadata[field] = row[field]
             metadata.setdefault("title", source.stem)
             output = _output_path(metadata, source, output_dir)

@@ -11,7 +11,8 @@ middleMusic is a lightweight, self-hosted music streaming app designed for easy 
 - Play/Pause, queue, shuffle, repeat, and volume controls
 - Favorites for tracks and albums
 - Web-based CSV-to-MP3 conversion with progress and downloadable results
-- CLI conversion using the same engine as the web interface
+- CLI and independently launchable desktop GUI using the same conversion engine
+- Mobile-friendly job import, monitoring, and downloads in a browser
 - SQLite-based local storage
 
 ## Quick Start
@@ -29,6 +30,12 @@ middleMusic is a lightweight, self-hosted music streaming app designed for easy 
 3. Open http://localhost:8080 and complete the setup wizard.
 4. Select your music directory and create your admin account.
 
+For a desktop session that starts a local server and opens the GUI automatically:
+
+```bash
+python -m middlemusic.gui
+```
+
 ## Configuration
 
 The app stores configuration in the local `data` directory and uses a default music folder at `./music` unless overridden with environment variables:
@@ -38,7 +45,17 @@ The app stores configuration in the local `data` directory and uses a default mu
 
 ## Convert a CSV of local music
 
-Open **Converter** in the web interface to upload a CSV, map its columns, choose an MP3 bitrate, and monitor the job. Paths in the CSV must refer to audio files already on the server, relative to the configured music library. Converted files are saved under `data/converted`.
+Open **Converter** in the web interface to upload a CSV, map its columns, choose an MP3 bitrate, and monitor the job. Paths in the CSV must refer to audio files already on the server, relative to the configured music library. Converted files are saved under `data/converted`. The mobile-friendly interface can upload a CSV, track job progress, and download finished files. Audio URLs and audio downloads are not supported.
+
+To look up optional Spotify metadata by track ID or `open.spotify.com/track/...` URL, configure a Spotify developer application and set `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in the server or CLI environment. The local audio file is still required; Spotify is used only for track metadata.
+
+Example CSV:
+
+```csv
+source,title,artist,album
+albums/record-one.flac,Record One,Example Artist,Example Album
+albums/record-two.wav,Record Two,Example Artist,Example Album
+```
 
 The same conversion engine is available from the command line:
 
@@ -53,7 +70,7 @@ python -m middlemusic.cli playlist.csv \
   --bitrate 192k
 ```
 
-`source` is the default source-column heading. Optional metadata mappings include `album-artist`, `genre`, `track-number`, and `year`. Supported bitrates are 128, 192, 256, and 320 kbps. FFmpeg is bundled through the Python dependency when no system FFmpeg is available. Remote audio URLs and audio downloads are not supported.
+`source` is the default source-column heading. Optional metadata mappings include `album-artist`, `genre`, `track-number`, `year`, and `spotify-track-id`. Supported bitrates are 128, 192, 256, and 320 kbps. FFmpeg is bundled through the Python dependency when no system FFmpeg is available. Remote audio URLs and audio downloads are not supported.
 
 
 ## holy fuck copilot is good at coding (compared to kilo code)

@@ -292,6 +292,8 @@ def create_app():
             rows = parse_csv(content, mapping)
         except (json.JSONDecodeError, ValueError) as error:
             return jsonify({"error": str(error)}), 400
+        if len(rows) > 2000:
+            return jsonify({"error": "A conversion job can contain at most 2,000 files."}), 400
 
         bitrate = request.form.get("bitrate", "192k")
         if bitrate not in BITRATES:
@@ -343,7 +345,12 @@ def create_app():
         job = get_conversion_job(job_id, session["user_id"])
         if job is None or filename not in job["outputs"] or Path(filename).name != filename:
             abort(404)
-        output_path = Path(job["output_dir"]) / filename
+        converted_root = (DATA_DIR / "converted").resolve()
+        try:
+            output_path = (Path(job["output_dir"]) / filename).resolve(strict=True)
+            output_path.relative_to(converted_root)
+        except (OSError, ValueError):
+            abort(404)
         if not output_path.is_file():
             abort(404)
         return send_file(output_path, as_attachment=True, download_name=filename)

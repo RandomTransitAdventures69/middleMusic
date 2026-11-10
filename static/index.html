@@ -132,6 +132,7 @@
           <div class="converter-panel">
             <p class="converter-help">
               Convert local audio files from a CSV into tagged MP3s. Source paths are relative to your music library.
+              Optionally map Spotify track IDs for metadata lookup (requires server API credentials).
               Audio URLs and downloads are not supported.
             </p>
             <form id="conversion-form" class="conversion-form">
@@ -149,6 +150,7 @@
                 <label>Genre column <input name="genre" placeholder="genre" /></label>
                 <label>Track number column <input name="track_number" placeholder="track_number" /></label>
                 <label>Year column <input name="year" placeholder="year" /></label>
+                <label>Spotify track ID column <input name="spotify_track_id" placeholder="spotify_track_id" /></label>
               </fieldset>
               <div class="conversion-options">
                 <label>
