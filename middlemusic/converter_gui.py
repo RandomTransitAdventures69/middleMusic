@@ -51,7 +51,7 @@ def main() -> None:
 
             ttk.Label(
                 content,
-                text="Convert local audio files to tagged MP3s",
+                text="fuck you copilot",
                 font=("TkDefaultFont", 16, "bold"),
             ).grid(row=0, column=0, sticky="w")
             ttk.Label(

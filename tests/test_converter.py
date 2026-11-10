@@ -128,8 +128,18 @@ runpy.run_path(sys.argv[1], run_name="converter_gui")
     def test_ambiguous_audio_path_columns_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "multiple possible audio path columns"):
             parse_csv(
-                b"File Path,Audio File,Title\nalbum/one.flac,album/one.flac,Song One\n"
+                b"File Path,Audio File,Title\nalbum/one.flac,album/two.mp3,Song One\n"
             )
+
+    def test_audio_path_contents_resolve_duplicate_path_headers(self):
+        rows = parse_csv(b"File Path,Audio File,Title\n,album/one.flac,Song One\n")
+
+        self.assertEqual(rows[0]["source"], "album/one.flac")
+
+    def test_populated_metadata_alias_wins_over_empty_alias(self):
+        rows = parse_csv(b"File Path,Title,Song Name\nalbum/one.flac,,Song One\n")
+
+        self.assertEqual(rows[0]["title"], "Song One")
 
     def test_headerless_multicolumn_csv_is_rejected_as_ambiguous(self):
         with self.assertRaisesRegex(ValueError, "columns are ambiguous"):
@@ -140,6 +150,39 @@ runpy.run_path(sys.argv[1], run_name="converter_gui")
 
         self.assertEqual(rows[0]["source"], "album/one.flac")
         self.assertEqual(rows[0]["album"], "")
+
+    def test_ignores_blank_export_columns(self):
+        rows = parse_csv(b"file_path,title,,\nalbum/one.flac,Song One,,\n")
+
+        self.assertEqual(rows[0]["source"], "album/one.flac")
+        self.assertEqual(rows[0]["title"], "Song One")
+
+    def test_track_column_contents_distinguish_title_from_track_number(self):
+        numbered = parse_csv(b"Path,Track\nalbum/one.flac,3/12\n")
+        titled = parse_csv(b"Path,Track\nalbum/one.flac,Song One\n")
+
+        self.assertEqual(numbered[0]["track_number"], "3/12")
+        self.assertEqual(numbered[0]["title"], "")
+        self.assertEqual(titled[0]["title"], "Song One")
+
+    def test_spotify_export_track_uri_and_id_are_auto_detected(self):
+        track_id = "1" * 22
+        rows = parse_csv(
+            (
+                "Filename,Track Name,Artist Name(s),Album Name,Track URI,Track ID\n"
+                f"album/one.flac,Song One,Artist One,Album One,"
+                f"spotify:track:{track_id},{track_id}\n"
+            ).encode()
+        )
+
+        self.assertEqual(rows[0]["source"], "album/one.flac")
+        self.assertEqual(rows[0]["title"], "Song One")
+        self.assertEqual(rows[0]["artist"], "Artist One")
+        self.assertEqual(rows[0]["spotify_track_id"], track_id)
+
+    def test_remote_audio_csv_is_rejected_with_clear_error(self):
+        with self.assertRaisesRegex(ValueError, "Remote audio URLs are not supported"):
+            parse_csv(b"source,title\nhttps://example.invalid/audio.mp3,Song\n")
 
     def test_converts_local_wav_and_tags_output(self):
         with tempfile.TemporaryDirectory() as temporary_directory:

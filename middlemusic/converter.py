@@ -35,24 +35,32 @@ FIELD_ALIASES = {
     "source": {
         "audio",
         "audio_file",
+        "audio_file_path",
         "audio_filename",
         "audio_path",
         "file",
         "file_location",
         "file_name",
         "file_path",
+        "filename_with_path",
         "filename",
         "filepath",
         "full_path",
         "local_file",
+        "local_filename",
         "local_path",
         "location",
         "music_file",
         "path",
         "relative_path",
+        "recording_path",
+        "song_file",
+        "song_path",
         "source",
         "source_file",
+        "source_path",
         "track_file",
+        "track_filename",
         "track_path",
     },
     "title": {
@@ -69,6 +77,7 @@ FIELD_ALIASES = {
         "artist_name",
         "artist_names",
         "artist_name_s",
+        "artist_s",
         "artists",
         "performer",
         "performers",
@@ -76,13 +85,21 @@ FIELD_ALIASES = {
         "singers",
         "track_artist",
     },
-    "album": {"album", "album_name", "release", "release_name", "record"},
+    "album": {
+        "album",
+        "album_name",
+        "album_title",
+        "release",
+        "release_name",
+        "record",
+    },
     "album_artist": {
         "albumartist",
         "album_artist",
         "album_artist_name",
         "album_artist_names",
         "album_artist_name_s",
+        "album_artist_s",
     },
     "genre": {"genre", "genres", "style"},
     "track_number": {
@@ -93,14 +110,14 @@ FIELD_ALIASES = {
         "track_index",
         "tracknumber",
     },
-    "year": {"date", "release_date", "release_year", "year"},
+    "year": {"date", "release_date", "release_year", "year", "year_released"},
     "spotify_track_id": {
         "spotify_id",
         "spotify_track_id",
         "spotify_uri",
         "spotify_url",
         "track_id",
-        "uri",
+        "track_uri",
     },
 }
 _AUDIO_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
@@ -143,6 +160,21 @@ def _looks_like_audio_path(value: str) -> bool:
     )
 
 
+def _normalize_field_value(field: str, value: str) -> str:
+    value = value.strip()
+    if field != "spotify_track_id":
+        return value
+    spotify_uri = re.fullmatch(r"spotify:track:([A-Za-z0-9]+)", value)
+    if spotify_uri:
+        return spotify_uri.group(1)
+    spotify_url = re.match(
+        r"https?://(?:www\.)?open\.spotify\.com/track/([^/?#]+)",
+        value,
+        re.IGNORECASE,
+    )
+    return spotify_url.group(1) if spotify_url else value
+
+
 def _choose_source_column(
     headers: list[str], records: list[list[str]]
 ) -> tuple[int, str]:
@@ -154,6 +186,29 @@ def _choose_source_column(
     if len(explicit) == 1:
         return explicit[0], headers[explicit[0]]
     if len(explicit) > 1:
+        path_scores = []
+        for index in explicit:
+            values = [row[index].strip() for row in records if index < len(row)]
+            populated = [value for value in values if value]
+            score = (
+                sum(_looks_like_audio_path(value) for value in populated)
+                / len(populated)
+                if populated
+                else 0
+            )
+            path_scores.append((score, index, values))
+        highest_score = max(score for score, _, _ in path_scores)
+        winners = [
+            (index, values)
+            for score, index, values in path_scores
+            if score == highest_score
+        ]
+        if highest_score >= 0.6 and len(winners) == 1:
+            index = winners[0][0]
+            return index, headers[index]
+        if len({tuple(values) for _, values in winners}) == 1:
+            index = winners[0][0]
+            return index, headers[index]
         names = ", ".join(repr(headers[index]) for index in explicit)
         raise ValueError(f"CSV has multiple possible audio path columns: {names}.")
 
@@ -205,6 +260,11 @@ def analyze_csv(content: bytes) -> CsvAnalysis:
     has_header = any(field is not None for field in first_fields)
 
     if not has_header:
+        if first_row and _AUDIO_URL.match(first_row[0]):
+            raise ValueError(
+                "Remote audio URLs are not supported; the CSV must contain local "
+                "music-library file paths."
+            )
         if len(first_row) != 1 or not _looks_like_audio_path(first_row[0]):
             raise ValueError(
                 "The CSV has no recognizable header row and its columns are "
@@ -217,25 +277,54 @@ def analyze_csv(content: bytes) -> CsvAnalysis:
     else:
         headers = first_row
         data_records = records[1:]
-        normalized_headers = [_normalize_header(header) for header in headers]
+        normalized_headers = [
+            normalized
+            for header in headers
+            if (normalized := _normalize_header(header))
+        ]
         if len(set(normalized_headers)) != len(normalized_headers):
             raise ValueError("CSV has duplicate column names; rename them and retry.")
 
         source_index, source_header = _choose_source_column(headers, data_records)
         columns = {"source": source_header}
+        candidates: dict[str, list[int]] = {}
         for index, header in enumerate(headers):
             if index == source_index:
                 continue
             values = [row[index] for row in data_records if index < len(row)]
             field = _field_for_header(header, values)
-            if field is None:
-                continue
-            if field in columns:
-                raise ValueError(
-                    f"CSV has multiple columns that could contain {field.replace('_', ' ')} "
-                    f"data: {columns[field]!r} and {header!r}."
-                )
-            columns[field] = header
+            if field is not None:
+                candidates.setdefault(field, []).append(index)
+
+        for field, indexes in candidates.items():
+            populated = [
+                index
+                for index in indexes
+                if any(index < len(row) and row[index].strip() for row in data_records)
+            ]
+            if len(populated) == 1:
+                selected = populated[0]
+            elif len(populated) > 1:
+                value_sets = {
+                    tuple(
+                        _normalize_field_value(
+                            field, row[index] if index < len(row) else ""
+                        )
+                        for row in data_records
+                    )
+                    for index in populated
+                }
+                if len(value_sets) == 1:
+                    selected = populated[0]
+                else:
+                    names = ", ".join(repr(headers[index]) for index in populated)
+                    raise ValueError(
+                        f"CSV has multiple columns that could contain "
+                        f"{field.replace('_', ' ')} data: {names}."
+                    )
+            else:
+                selected = indexes[0]
+            columns[field] = headers[selected]
 
     field_indexes = {
         field: next(
@@ -256,17 +345,18 @@ def analyze_csv(content: bytes) -> CsvAnalysis:
             continue
         if _AUDIO_URL.match(source):
             raise ValueError(
-                f"CSV row {line_number} contains a remote audio URL; only local "
-                "music-library files are supported."
+                f"CSV row {line_number}: Remote audio URLs are not supported; "
+                "only local music-library files are accepted."
             )
         rows.append(
             {
                 "line_number": str(line_number),
                 **{
-                    field: (
-                        values[field_indexes[field]].strip()
+                    field: _normalize_field_value(
+                        field,
+                        values[field_indexes[field]]
                         if field in field_indexes and field_indexes[field] >= 0
-                        else ""
+                        else "",
                     )
                     for field in CSV_FIELDS[1:]
                 },
