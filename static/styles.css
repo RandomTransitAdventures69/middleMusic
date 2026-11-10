@@ -210,10 +210,8 @@ label { display: grid; gap: 6px; color: var(--muted); }
 .converter-help, .empty-state { color: var(--muted); }
 .conversion-form { display: grid; gap: 18px; }
 .file-picker input { padding: 9px; border: 1px dashed var(--border); border-radius: 8px; background: var(--panel-muted); }
-.mapping-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 12px; margin: 0; padding: 16px; border: 1px solid var(--border); border-radius: 9px; }
-.mapping-grid legend { padding: 0 6px; font-weight: 650; }
-.mapping-grid label, .conversion-options label { min-width: 0; font-size: 0.88rem; }
-.mapping-grid input, .conversion-options input, .conversion-options select {
+.conversion-options label { min-width: 0; font-size: 0.88rem; }
+.conversion-options input, .conversion-options select {
   width: 100%;
   min-width: 0;
   min-height: 40px;
@@ -223,6 +221,13 @@ label { display: grid; gap: 6px; color: var(--muted); }
   background: var(--panel);
   color: var(--text);
 }
+.csv-preview { min-width: 0; padding: 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel-muted); }
+.csv-preview h3 { margin: 0 0 8px; }
+.csv-preview p { margin: 6px 0; overflow-wrap: anywhere; }
+.csv-preview-table-wrap { max-width: 100%; margin-top: 12px; overflow-x: auto; }
+.csv-preview-table { width: 100%; min-width: 560px; border-collapse: collapse; text-align: left; }
+.csv-preview-table th, .csv-preview-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); overflow-wrap: anywhere; }
+.csv-preview-table th { color: var(--muted); font-size: 0.82rem; }
 .conversion-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 640px; }
 .form-message { min-height: 1.4em; color: var(--muted); }
 .jobs-title { margin: 26px 0 12px; }
@@ -339,7 +344,6 @@ label { display: grid; gap: 6px; color: var(--muted); }
   .timeline-row { gap: 7px; }
   .settings-card > div { grid-template-columns: 1fr; gap: 2px; }
   .converter-panel { padding: 15px; }
-  .mapping-grid { grid-template-columns: 1fr; padding: 12px; }
   .conversion-options { grid-template-columns: 1fr; }
   .job-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
 }

@@ -131,8 +131,7 @@
           </div>
           <div class="converter-panel">
             <p class="converter-help">
-              Convert local audio files from a CSV into tagged MP3s. Source paths are relative to your music library.
-              Optionally map Spotify track IDs for metadata lookup (requires server API credentials).
+              Select a CSV to automatically detect its format and preview the local audio files before converting.
               Audio URLs and downloads are not supported.
             </p>
             <form id="conversion-form" class="conversion-form">
@@ -140,18 +139,19 @@
                 CSV file
                 <input id="conversion-csv" type="file" accept=".csv,text/csv" required />
               </label>
-              <fieldset class="mapping-grid">
-                <legend>Match CSV columns</legend>
-                <label>File path column <input name="source" value="source" required /></label>
-                <label>Title column <input name="title" placeholder="title" /></label>
-                <label>Artist column <input name="artist" placeholder="artist" /></label>
-                <label>Album column <input name="album" placeholder="album" /></label>
-                <label>Album artist column <input name="album_artist" placeholder="album_artist" /></label>
-                <label>Genre column <input name="genre" placeholder="genre" /></label>
-                <label>Track number column <input name="track_number" placeholder="track_number" /></label>
-                <label>Year column <input name="year" placeholder="year" /></label>
-                <label>Spotify track ID column <input name="spotify_track_id" placeholder="spotify_track_id" /></label>
-              </fieldset>
+              <section id="conversion-preview" class="csv-preview hidden" aria-live="polite">
+                <h3>Import preview</h3>
+                <p id="conversion-preview-summary"></p>
+                <p id="conversion-preview-detected" class="converter-help"></p>
+                <div class="csv-preview-table-wrap">
+                  <table class="csv-preview-table">
+                    <thead>
+                      <tr><th>File</th><th>Title</th><th>Artist</th><th>Album</th></tr>
+                    </thead>
+                    <tbody id="conversion-preview-rows"></tbody>
+                  </table>
+                </div>
+              </section>
               <div class="conversion-options">
                 <label>
                   Output folder
@@ -167,7 +167,7 @@
                   </select>
                 </label>
               </div>
-              <button id="conversion-submit" class="primary-button" type="submit">Start conversion</button>
+              <button id="conversion-submit" class="primary-button" type="submit" disabled>Confirm and convert</button>
               <div id="conversion-message" class="form-message" role="status"></div>
             </form>
           </div>

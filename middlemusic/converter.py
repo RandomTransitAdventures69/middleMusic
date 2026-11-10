@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Iterable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -19,7 +20,7 @@ else:
     from middlemusic.spotify import get_track_metadata as get_spotify_metadata
 
 BITRATES = {"128k", "192k", "256k", "320k"}
-MAPPED_FIELDS = (
+CSV_FIELDS = (
     "source",
     "title",
     "artist",
@@ -30,46 +31,255 @@ MAPPED_FIELDS = (
     "year",
     "spotify_track_id",
 )
+FIELD_ALIASES = {
+    "source": {
+        "audio",
+        "audio_file",
+        "audio_filename",
+        "audio_path",
+        "file",
+        "file_location",
+        "file_name",
+        "file_path",
+        "filename",
+        "filepath",
+        "full_path",
+        "local_file",
+        "local_path",
+        "location",
+        "music_file",
+        "path",
+        "relative_path",
+        "source",
+        "source_file",
+        "track_file",
+        "track_path",
+    },
+    "title": {
+        "name",
+        "song",
+        "song_name",
+        "song_title",
+        "title",
+        "track_name",
+        "track_title",
+    },
+    "artist": {
+        "artist",
+        "artist_name",
+        "artist_names",
+        "artist_name_s",
+        "artists",
+        "performer",
+        "performers",
+        "singer",
+        "singers",
+        "track_artist",
+    },
+    "album": {"album", "album_name", "release", "release_name", "record"},
+    "album_artist": {
+        "albumartist",
+        "album_artist",
+        "album_artist_name",
+        "album_artist_names",
+        "album_artist_name_s",
+    },
+    "genre": {"genre", "genres", "style"},
+    "track_number": {
+        "track_no",
+        "track_num",
+        "track_number",
+        "track_number_total",
+        "track_index",
+        "tracknumber",
+    },
+    "year": {"date", "release_date", "release_year", "year"},
+    "spotify_track_id": {
+        "spotify_id",
+        "spotify_track_id",
+        "spotify_uri",
+        "spotify_url",
+        "track_id",
+        "uri",
+    },
+}
+_AUDIO_URL = re.compile(r"^[A-Za-z][A-Za-z0-9+.-]*://")
+_TRACK_NUMBER = re.compile(r"^\d+(?:\s*/\s*\d+|\s+of\s+\d+)?$", re.IGNORECASE)
 
 
-def parse_csv(content: bytes, mapping: dict[str, str]) -> list[dict[str, str]]:
+@dataclass
+class CsvAnalysis:
+    rows: list[dict[str, str]]
+    columns: dict[str, str]
+    delimiter: str
+    has_header: bool
+
+
+def _normalize_header(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.strip().casefold()).strip("_")
+
+
+def _field_for_header(header: str, values: list[str]) -> str | None:
+    normalized = _normalize_header(header)
+    if normalized == "track":
+        nonempty_values = [value.strip() for value in values if value.strip()]
+        if nonempty_values and all(
+            _TRACK_NUMBER.fullmatch(value) for value in nonempty_values
+        ):
+            return "track_number"
+        return "title"
+    return next(
+        (field for field, aliases in FIELD_ALIASES.items() if normalized in aliases),
+        None,
+    )
+
+
+def _looks_like_audio_path(value: str) -> bool:
+    value = value.strip()
+    return (
+        bool(value)
+        and not _AUDIO_URL.match(value)
+        and Path(value).suffix.lower() in AUDIO_EXTENSIONS
+    )
+
+
+def _choose_source_column(
+    headers: list[str], records: list[list[str]]
+) -> tuple[int, str]:
+    explicit = [
+        index
+        for index, header in enumerate(headers)
+        if _field_for_header(header, []) == "source"
+    ]
+    if len(explicit) == 1:
+        return explicit[0], headers[explicit[0]]
+    if len(explicit) > 1:
+        names = ", ".join(repr(headers[index]) for index in explicit)
+        raise ValueError(f"CSV has multiple possible audio path columns: {names}.")
+
+    candidates = []
+    for index in range(len(headers)):
+        values = [row[index].strip() for row in records if index < len(row)]
+        populated = [value for value in values if value]
+        if populated:
+            path_count = sum(_looks_like_audio_path(value) for value in populated)
+            if path_count / len(populated) >= 0.6:
+                candidates.append(index)
+    if len(candidates) == 1:
+        index = candidates[0]
+        return index, headers[index] or "Detected local file paths"
+    if len(candidates) > 1:
+        names = ", ".join(repr(headers[index]) for index in candidates)
+        raise ValueError(f"CSV has ambiguous audio path columns: {names}.")
+    raise ValueError(
+        "Could not identify a local audio file path column. Include a column such as "
+        "'source', 'path', 'file', or 'filename'; remote audio URLs are not supported."
+    )
+
+
+def analyze_csv(content: bytes) -> CsvAnalysis:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as error:
         raise ValueError("CSV file must use UTF-8 encoding.") from error
 
-    reader = csv.DictReader(io.StringIO(text))
-    headers = reader.fieldnames or []
-    source_column = (mapping.get("source") or "source").strip()
-    if source_column not in headers:
-        raise ValueError(f"CSV has no source column named '{source_column}'.")
+    sample = text[:8192]
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
 
-    selected_columns = {"source": source_column}
-    for field in MAPPED_FIELDS[1:]:
-        column = (mapping.get(field) or "").strip()
-        if column and column not in headers:
+    try:
+        records = [
+            [cell.strip() for cell in row]
+            for row in csv.reader(io.StringIO(text), dialect)
+            if any(cell.strip() for cell in row)
+        ]
+    except csv.Error as error:
+        raise ValueError(f"CSV is malformed: {error}") from error
+    if not records:
+        raise ValueError("CSV is empty.")
+
+    first_row = records[0]
+    first_fields = [_field_for_header(header, []) for header in first_row]
+    has_header = any(field is not None for field in first_fields)
+
+    if not has_header:
+        if len(first_row) != 1 or not _looks_like_audio_path(first_row[0]):
             raise ValueError(
-                f"CSV has no {field.replace('_', ' ')} column named '{column}'."
+                "The CSV has no recognizable header row and its columns are "
+                "ambiguous. Add headings such as 'path', 'title', and 'artist'."
             )
-        selected_columns[field] = column
+        headers = ["First column (no header)"]
+        data_records = records
+        source_index = 0
+        columns = {"source": headers[0]}
+    else:
+        headers = first_row
+        data_records = records[1:]
+        normalized_headers = [_normalize_header(header) for header in headers]
+        if len(set(normalized_headers)) != len(normalized_headers):
+            raise ValueError("CSV has duplicate column names; rename them and retry.")
+
+        source_index, source_header = _choose_source_column(headers, data_records)
+        columns = {"source": source_header}
+        for index, header in enumerate(headers):
+            if index == source_index:
+                continue
+            values = [row[index] for row in data_records if index < len(row)]
+            field = _field_for_header(header, values)
+            if field is None:
+                continue
+            if field in columns:
+                raise ValueError(
+                    f"CSV has multiple columns that could contain {field.replace('_', ' ')} "
+                    f"data: {columns[field]!r} and {header!r}."
+                )
+            columns[field] = header
+
+    field_indexes = {
+        field: next(
+            (index for index, header in enumerate(headers) if header == columns[field]),
+            0 if field == "source" and not has_header else -1,
+        )
+        for field in columns
+    }
 
     rows = []
-    for line_number, row in enumerate(reader, start=2):
-        source = (row.get(source_column) or "").strip()
+    for record_index, record in enumerate(data_records):
+        line_number = record_index + (2 if has_header else 1)
+        if len(record) > len(headers) and any(record[len(headers) :]):
+            raise ValueError(f"CSV row {line_number} has more fields than its header.")
+        values = record[: len(headers)] + [""] * max(0, len(headers) - len(record))
+        source = values[source_index].strip()
         if not source:
             continue
+        if _AUDIO_URL.match(source):
+            raise ValueError(
+                f"CSV row {line_number} contains a remote audio URL; only local "
+                "music-library files are supported."
+            )
         rows.append(
             {
                 "line_number": str(line_number),
                 **{
-                    field: (row.get(column) or "").strip() if column else ""
-                    for field, column in selected_columns.items()
+                    field: (
+                        values[field_indexes[field]].strip()
+                        if field in field_indexes and field_indexes[field] >= 0
+                        else ""
+                    )
+                    for field in CSV_FIELDS[1:]
                 },
+                "source": source,
             }
         )
     if not rows:
         raise ValueError("CSV contains no rows with a source file.")
-    return rows
+    return CsvAnalysis(rows, columns, dialect.delimiter, has_header)
+
+
+def parse_csv(content: bytes) -> list[dict[str, str]]:
+    return analyze_csv(content).rows
 
 
 def _ffmpeg_executable() -> str:
@@ -199,7 +409,7 @@ def convert_rows(
             spotify_reference = row.get("spotify_track_id", "")
             if spotify_reference:
                 metadata.update(get_spotify_metadata(spotify_reference))
-            for field in MAPPED_FIELDS[1:]:
+            for field in CSV_FIELDS[1:]:
                 if field != "spotify_track_id" and row.get(field):
                     metadata[field] = row[field]
             metadata.setdefault("title", source.stem)
@@ -240,6 +450,11 @@ def convert_rows(
 
 
 if __name__ == "__main__":
-    from middlemusic.cli import main
+    if len(sys.argv) > 1:
+        from middlemusic.cli import main
+    else:
+        from middlemusic.converter_gui import main
+
+        raise SystemExit(main())
 
     raise SystemExit(main())

@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import secrets
@@ -11,7 +10,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from .config import ARTWORK_DIR, DATA_DIR, LIBRARY_PATH
 from .conversion_jobs import start_conversion_job
-from .converter import BITRATES, parse_csv
+from .converter import BITRATES, analyze_csv
 from .database import (
     add_track_to_playlist,
     count_rows,
@@ -327,25 +326,53 @@ def create_app():
         add_track_to_playlist(playlist_id, track_id)
         return jsonify({"success": True})
 
-    @app.post("/api/conversions")
-    def submit_conversion():
+    def uploaded_conversion_analysis():
         requires_login()
         csv_file = request.files.get("csv_file")
         if csv_file is None or not csv_file.filename:
-            return jsonify({"error": "Choose a CSV file to convert."}), 400
+            return None, (jsonify({"error": "Choose a CSV file to convert."}), 400)
         content = csv_file.read(app.config["MAX_CONTENT_LENGTH"] + 1)
         if len(content) > app.config["MAX_CONTENT_LENGTH"]:
-            return jsonify({"error": "CSV files must be 5 MB or smaller."}), 413
+            return None, (
+                jsonify({"error": "CSV files must be 5 MB or smaller."}),
+                413,
+            )
         try:
-            mapping = json.loads(request.form.get("mapping", "{}"))
-            if not isinstance(mapping, dict) or not all(
-                isinstance(key, str) and isinstance(value, str)
-                for key, value in mapping.items()
-            ):
-                raise ValueError("Column mapping must contain text values.")
-            rows = parse_csv(content, mapping)
-        except (json.JSONDecodeError, ValueError) as error:
-            return jsonify({"error": str(error)}), 400
+            analysis = analyze_csv(content)
+        except ValueError as error:
+            return None, (jsonify({"error": str(error)}), 400)
+        return analysis, None
+
+    @app.post("/api/conversions/preview")
+    def preview_conversion():
+        analysis, error = uploaded_conversion_analysis()
+        if error:
+            return error
+        if len(analysis.rows) > 2000:
+            return jsonify(
+                {"error": "A conversion job can contain at most 2,000 files."}
+            ), 400
+        return jsonify(
+            {
+                "total": len(analysis.rows),
+                "delimiter": analysis.delimiter,
+                "detected_columns": analysis.columns,
+                "sample": [
+                    {
+                        field: row.get(field, "")
+                        for field in ("source", "title", "artist", "album")
+                    }
+                    for row in analysis.rows[:8]
+                ],
+            }
+        )
+
+    @app.post("/api/conversions")
+    def submit_conversion():
+        analysis, error = uploaded_conversion_analysis()
+        if error:
+            return error
+        rows = analysis.rows
         if len(rows) > 2000:
             return jsonify(
                 {"error": "A conversion job can contain at most 2,000 files."}

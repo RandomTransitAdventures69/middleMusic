@@ -10,7 +10,13 @@ const state = {
   shuffle: false,
   repeat: false,
   conversionTimer: null,
+  conversionPreview: null,
+  conversionPreviewRequest: 0,
 };
+const initialView =
+  new URLSearchParams(window.location.search).get('view') === 'converter'
+    ? 'converter'
+    : 'home';
 
 const audio = document.getElementById('audio-player');
 const elements = {
@@ -88,23 +94,77 @@ function setTheme(theme) {
   localStorage.setItem('middlemusic-theme', theme);
 }
 
+async function analyzeConversionFile() {
+  const fileInput = document.getElementById('conversion-csv');
+  const message = document.getElementById('conversion-message');
+  const submitButton = document.getElementById('conversion-submit');
+  const preview = document.getElementById('conversion-preview');
+  const requestId = ++state.conversionPreviewRequest;
+  state.conversionPreview = null;
+  submitButton.disabled = true;
+  preview.classList.add('hidden');
+
+  if (!fileInput.files.length) {
+    message.textContent = '';
+    return;
+  }
+
+  const payload = new FormData();
+  payload.append('csv_file', fileInput.files[0]);
+  message.textContent = 'Analyzing CSV…';
+  try {
+    const result = await fetchJson('/api/conversions/preview', {
+      method: 'POST',
+      body: payload,
+    });
+    if (requestId !== state.conversionPreviewRequest) return;
+    state.conversionPreview = { filename: fileInput.files[0].name };
+    document.getElementById('conversion-preview-summary').textContent =
+      `Detected ${result.total} local audio file${result.total === 1 ? '' : 's'} (${result.delimiter === '\t' ? 'tab' : result.delimiter}-separated CSV).`;
+    const fieldLabels = {
+      source: 'File path',
+      title: 'Title',
+      artist: 'Artist',
+      album: 'Album',
+      album_artist: 'Album artist',
+      genre: 'Genre',
+      track_number: 'Track number',
+      year: 'Year',
+      spotify_track_id: 'Spotify track ID',
+    };
+    document.getElementById('conversion-preview-detected').textContent =
+      `Detected columns: ${Object.entries(result.detected_columns)
+        .map(([field, column]) => `${fieldLabels[field] || field} from “${column}”`)
+        .join('; ')}.`;
+    document.getElementById('conversion-preview-rows').innerHTML =
+      result.sample.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.source)}</td>
+          <td>${escapeHtml(row.title)}</td>
+          <td>${escapeHtml(row.artist)}</td>
+          <td>${escapeHtml(row.album)}</td>
+        </tr>
+      `).join('');
+    preview.classList.remove('hidden');
+    submitButton.disabled = false;
+    message.textContent = 'Review the preview, then confirm to start conversion.';
+  } catch (error) {
+    if (requestId === state.conversionPreviewRequest) {
+      message.textContent = error.message;
+    }
+  }
+}
+
 async function handleConversion(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const fileInput = document.getElementById('conversion-csv');
   const message = document.getElementById('conversion-message');
   const submitButton = document.getElementById('conversion-submit');
-  if (!fileInput.files.length) return;
+  if (!fileInput.files.length || !state.conversionPreview) return;
 
-  const mapping = Object.fromEntries(
-    [...form.querySelectorAll('.mapping-grid input')].map((input) => [
-      input.name,
-      input.value.trim(),
-    ]),
-  );
   const payload = new FormData();
   payload.append('csv_file', fileInput.files[0]);
-  payload.append('mapping', JSON.stringify(mapping));
   payload.append('bitrate', document.getElementById('conversion-bitrate').value);
   payload.append('output_directory', document.getElementById('conversion-output').value.trim());
 
@@ -115,13 +175,15 @@ async function handleConversion(event) {
     form.reset();
     document.getElementById('conversion-output').value = 'Converted Files';
     document.getElementById('conversion-bitrate').value = '192k';
-    document.querySelector('.mapping-grid input[name="source"]').value = 'source';
+    state.conversionPreview = null;
+    document.getElementById('conversion-preview').classList.add('hidden');
+    document.getElementById('conversion-preview-rows').innerHTML = '';
     message.textContent = 'Job queued. You can leave this page and check its progress later.';
     await loadConversionJobs();
   } catch (error) {
     message.textContent = error.message;
   } finally {
-    submitButton.disabled = false;
+    submitButton.disabled = !state.conversionPreview;
   }
 }
 
@@ -156,6 +218,8 @@ function updateSessionUI() {
   elements.logoutButton.classList.toggle('hidden', !loggedIn);
   if (!loggedIn) {
     renderView('home');
+  } else if (initialView === 'converter') {
+    renderView(initialView);
   }
 }
 
@@ -484,6 +548,7 @@ document.querySelectorAll('.nav-item').forEach((button) => {
 
 elements.setupForm.addEventListener('submit', handleSetup);
 elements.loginForm.addEventListener('submit', handleLogin);
+document.getElementById('conversion-csv').addEventListener('change', analyzeConversionFile);
 document.getElementById('conversion-form').addEventListener('submit', handleConversion);
 elements.logoutButton.addEventListener('click', handleLogout);
 elements.scanLibraryButton.addEventListener('click', handleScanLibrary);

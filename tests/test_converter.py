@@ -15,10 +15,44 @@ from unittest.mock import patch
 from mutagen.mp3 import MP3
 
 from middlemusic import create_app, spotify
-from middlemusic.converter import convert_rows, parse_csv
+from middlemusic.converter import analyze_csv, convert_rows, parse_csv
 
 
 class ConverterTests(unittest.TestCase):
+    def test_converter_without_arguments_launches_gui(self):
+        project_root = str(Path(__file__).resolve().parents[1])
+        converter_script = str(Path(project_root) / "middlemusic" / "converter.py")
+        runner = """
+import runpy
+import sys
+from unittest.mock import Mock
+
+sys.path.insert(0, sys.argv[1])
+import middlemusic.converter_gui
+gui_main = Mock(return_value=None)
+middlemusic.converter_gui.main = gui_main
+converter_script = sys.argv[2]
+sys.argv = [converter_script]
+runpy.run_path(converter_script, run_name="__main__")
+gui_main.assert_called_once_with()
+"""
+        with tempfile.TemporaryDirectory() as working_directory:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    runner,
+                    project_root,
+                    converter_script,
+                ],
+                cwd=working_directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_converter_script_runs_as_cli(self):
         converter_script = (
             Path(__file__).resolve().parents[1] / "middlemusic" / "converter.py"
@@ -33,14 +67,79 @@ class ConverterTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("CSV file containing local music paths", result.stdout)
 
-    def test_csv_column_mapping(self):
-        rows = parse_csv(
-            b"File,Song,Performer\nalbum/one.flac,Song One,Artist One\n",
-            {"source": "File", "title": "Song", "artist": "Performer"},
+    def test_converter_gui_script_imports_without_package_context(self):
+        project_root = Path(__file__).resolve().parents[1]
+        gui_script = project_root / "middlemusic" / "converter_gui.py"
+        runner = """
+import runpy
+import sys
+runpy.run_path(sys.argv[1], run_name="converter_gui")
+"""
+        with tempfile.TemporaryDirectory() as working_directory:
+            result = subprocess.run(
+                [sys.executable, "-c", runner, str(gui_script)],
+                cwd=working_directory,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_auto_detects_common_header_variations(self):
+        analysis = analyze_csv(
+            b"Audio File;Song Name;Performer;Album Name\n"
+            b"album/one.flac;Song One;Artist One;Album One\n"
+        )
+        rows = analysis.rows
+
+        self.assertEqual(analysis.delimiter, ";")
+        self.assertEqual(
+            analysis.columns,
+            {
+                "source": "Audio File",
+                "title": "Song Name",
+                "artist": "Performer",
+                "album": "Album Name",
+            },
         )
         self.assertEqual(rows[0]["source"], "album/one.flac")
         self.assertEqual(rows[0]["title"], "Song One")
         self.assertEqual(rows[0]["artist"], "Artist One")
+
+    def test_auto_detects_local_path_column_from_contents(self):
+        rows = parse_csv(b"Asset,Song,Performer\nalbum/one.flac,Song One,Artist One\n")
+
+        self.assertEqual(rows[0]["source"], "album/one.flac")
+        self.assertEqual(rows[0]["title"], "Song One")
+        self.assertEqual(rows[0]["album"], "")
+
+    def test_headerless_single_column_file_list_is_supported(self):
+        rows = parse_csv(b"album/one.flac\nalbum/two.mp3\n")
+
+        self.assertEqual(
+            [row["source"] for row in rows],
+            [
+                "album/one.flac",
+                "album/two.mp3",
+            ],
+        )
+
+    def test_ambiguous_audio_path_columns_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "multiple possible audio path columns"):
+            parse_csv(
+                b"File Path,Audio File,Title\nalbum/one.flac,album/one.flac,Song One\n"
+            )
+
+    def test_headerless_multicolumn_csv_is_rejected_as_ambiguous(self):
+        with self.assertRaisesRegex(ValueError, "columns are ambiguous"):
+            parse_csv(b"album/one.flac,Song One,Artist One\n")
+
+    def test_optional_metadata_columns_can_be_absent(self):
+        rows = parse_csv(b"file_path\nalbum/one.flac\n")
+
+        self.assertEqual(rows[0]["source"], "album/one.flac")
+        self.assertEqual(rows[0]["album"], "")
 
     def test_converts_local_wav_and_tags_output(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
@@ -170,6 +269,23 @@ class ConverterTests(unittest.TestCase):
                     },
                 )
                 self.assertEqual(setup.status_code, 200)
+                preview = client.post(
+                    "/api/conversions/preview",
+                    data={
+                        "csv_file": (
+                            io.BytesIO(
+                                b"path,Title,Artist\nweb-test.wav,Web Test,Test Artist\n"
+                            ),
+                            "tracks.csv",
+                        )
+                    },
+                    content_type="multipart/form-data",
+                )
+                self.assertEqual(preview.status_code, 200)
+                self.assertEqual(preview.get_json()["total"], 1)
+                self.assertEqual(
+                    preview.get_json()["detected_columns"]["source"], "path"
+                )
                 response = client.post(
                     "/api/conversions",
                     data={
@@ -178,9 +294,6 @@ class ConverterTests(unittest.TestCase):
                                 b"path,Title,Artist\nweb-test.wav,Web Test,Test Artist\n"
                             ),
                             "tracks.csv",
-                        ),
-                        "mapping": json.dumps(
-                            {"source": "path", "title": "Title", "artist": "Artist"}
                         ),
                         "bitrate": "128k",
                         "output_directory": "Web Tests",
