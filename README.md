@@ -55,12 +55,5 @@ python -m middlemusic.cli playlist.csv \
 
 `source` is the default source-column heading. Optional metadata mappings include `album-artist`, `genre`, `track-number`, and `year`. Supported bitrates are 128, 192, 256, and 320 kbps. FFmpeg is bundled through the Python dependency when no system FFmpeg is available. Remote audio URLs and audio downloads are not supported.
 
-## Development
 
-```bash
-python -m unittest discover -s tests
-```
-
-## Roadmap
-
-This version is intentionally focused on a complete, usable MVP: setup flow, library scanning, playback, favorites, playlists, and responsive UI.
+## holy fuck copilot is good at coding (compared to kilo code)
