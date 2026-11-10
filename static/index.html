@@ -28,6 +28,7 @@
           <button class="nav-item" data-view="playlists">Playlists</button>
           <button class="nav-item" data-view="favorites">Favorites</button>
           <button class="nav-item" data-view="search">Search</button>
+          <button class="nav-item" data-view="converter">Converter</button>
           <button class="nav-item" data-view="settings">Settings</button>
         </nav>
       </aside>
@@ -122,6 +123,54 @@
             <input id="global-search-input" type="search" placeholder="Search albums, titles, and artists" />
           </div>
           <div id="search-content" class="list"></div>
+        </section>
+
+        <section id="view-converter" class="view-panel hidden">
+          <div class="section-header">
+            <h2>Convert audio</h2>
+          </div>
+          <div class="converter-panel">
+            <p class="converter-help">
+              Convert local audio files from a CSV into tagged MP3s. Source paths are relative to your music library.
+              Audio URLs and downloads are not supported.
+            </p>
+            <form id="conversion-form" class="conversion-form">
+              <label class="file-picker">
+                CSV file
+                <input id="conversion-csv" type="file" accept=".csv,text/csv" required />
+              </label>
+              <fieldset class="mapping-grid">
+                <legend>Match CSV columns</legend>
+                <label>File path column <input name="source" value="source" required /></label>
+                <label>Title column <input name="title" placeholder="title" /></label>
+                <label>Artist column <input name="artist" placeholder="artist" /></label>
+                <label>Album column <input name="album" placeholder="album" /></label>
+                <label>Album artist column <input name="album_artist" placeholder="album_artist" /></label>
+                <label>Genre column <input name="genre" placeholder="genre" /></label>
+                <label>Track number column <input name="track_number" placeholder="track_number" /></label>
+                <label>Year column <input name="year" placeholder="year" /></label>
+              </fieldset>
+              <div class="conversion-options">
+                <label>
+                  Output folder
+                  <input id="conversion-output" type="text" value="Converted Files" maxlength="80" />
+                </label>
+                <label>
+                  MP3 quality
+                  <select id="conversion-bitrate">
+                    <option value="128k">128 kbps</option>
+                    <option value="192k" selected>192 kbps</option>
+                    <option value="256k">256 kbps</option>
+                    <option value="320k">320 kbps</option>
+                  </select>
+                </label>
+              </div>
+              <button id="conversion-submit" class="primary-button" type="submit">Start conversion</button>
+              <div id="conversion-message" class="form-message" role="status"></div>
+            </form>
+          </div>
+          <h3 class="jobs-title">Conversion jobs</h3>
+          <div id="conversion-jobs" class="conversion-jobs"></div>
         </section>
 
         <section id="view-settings" class="view-panel hidden">

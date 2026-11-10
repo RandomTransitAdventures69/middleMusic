@@ -9,6 +9,7 @@ const state = {
   index: 0,
   shuffle: false,
   repeat: false,
+  conversionTimer: null,
 };
 
 const audio = document.getElementById('audio-player');
@@ -26,6 +27,7 @@ const elements = {
   favoritesContent: document.getElementById('favorites-content'),
   searchContent: document.getElementById('search-content'),
   settingsContent: document.getElementById('settings-content'),
+  conversionJobs: document.getElementById('conversion-jobs'),
   searchInput: document.getElementById('search-input'),
   globalSearchInput: document.getElementById('global-search-input'),
   trackTitle: document.getElementById('track-title'),
@@ -55,9 +57,72 @@ function renderView(view) {
   state.view = view;
 }
 
+async function loadConversionJobs() {
+  const response = await fetchJson('/api/conversions');
+  const jobs = response.jobs || [];
+  elements.conversionJobs.innerHTML = jobs.map((job) => `
+    <article class="conversion-job">
+      <div class="job-heading">
+        <strong>${escapeHtml(job.status.replaceAll('_', ' '))}</strong>
+        <span>${job.completed} / ${job.total} files</span>
+      </div>
+      <progress value="${job.progress}" max="100" aria-label="${job.progress}% complete"></progress>
+      ${job.outputs.length ? `<div class="job-files">${job.outputs.map((file) => `<a href="${escapeHtml(file.url)}">${escapeHtml(file.name)}</a>`).join('')}</div>` : ''}
+      ${job.errors.length ? `<div class="job-errors">${job.errors.map((error) => `<p>Line ${escapeHtml(error.line_number || '?')}: ${escapeHtml(error.source)} — ${escapeHtml(error.message)}</p>`).join('')}</div>` : ''}
+    </article>
+  `).join('') || '<p class="empty-state">No conversion jobs yet.</p>';
+
+  const hasActiveJobs = jobs.some((job) => job.status === 'queued' || job.status === 'running');
+  if (hasActiveJobs && !state.conversionTimer) {
+    state.conversionTimer = window.setInterval(() => {
+      if (state.session.logged_in) loadConversionJobs().catch((error) => console.error(error));
+    }, 2000);
+  } else if (!hasActiveJobs && state.conversionTimer) {
+    window.clearInterval(state.conversionTimer);
+    state.conversionTimer = null;
+  }
+}
+
 function setTheme(theme) {
   document.body.classList.toggle('dark', theme === 'dark');
   localStorage.setItem('middlemusic-theme', theme);
+}
+
+async function handleConversion(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const fileInput = document.getElementById('conversion-csv');
+  const message = document.getElementById('conversion-message');
+  const submitButton = document.getElementById('conversion-submit');
+  if (!fileInput.files.length) return;
+
+  const mapping = Object.fromEntries(
+    [...form.querySelectorAll('.mapping-grid input')].map((input) => [
+      input.name,
+      input.value.trim(),
+    ]),
+  );
+  const payload = new FormData();
+  payload.append('csv_file', fileInput.files[0]);
+  payload.append('mapping', JSON.stringify(mapping));
+  payload.append('bitrate', document.getElementById('conversion-bitrate').value);
+  payload.append('output_directory', document.getElementById('conversion-output').value.trim());
+
+  submitButton.disabled = true;
+  message.textContent = 'Submitting conversion job…';
+  try {
+    await fetchJson('/api/conversions', { method: 'POST', body: payload });
+    form.reset();
+    document.getElementById('conversion-output').value = 'Converted Files';
+    document.getElementById('conversion-bitrate').value = '192k';
+    document.querySelector('.mapping-grid input[name="source"]').value = 'source';
+    message.textContent = 'Job queued. You can leave this page and check its progress later.';
+    await loadConversionJobs();
+  } catch (error) {
+    message.textContent = error.message;
+  } finally {
+    submitButton.disabled = false;
+  }
 }
 
 function escapeHtml(value) {
@@ -71,9 +136,12 @@ function escapeHtml(value) {
 }
 
 async function fetchJson(url, options = {}) {
+  const headers = options.body instanceof FormData
+    ? (options.headers || {})
+    : { 'Content-Type': 'application/json', ...(options.headers || {}) };
   const response = await fetch(url, {
-    headers: { 'Content-Type': 'application/json' },
     ...options,
+    headers,
   });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -110,7 +178,7 @@ async function loadSession() {
     state.session = sessionData;
     updateSessionUI();
     if (sessionData.logged_in) {
-      await Promise.all([loadHome(), loadArtists(), loadAlbums(), loadTracks(), loadPlaylists(), loadFavorites(), loadSettings()]);
+      await Promise.all([loadHome(), loadArtists(), loadAlbums(), loadTracks(), loadPlaylists(), loadFavorites(), loadSettings(), loadConversionJobs()]);
     } else {
       elements.loginPanel.classList.remove('hidden');
     }
@@ -263,7 +331,7 @@ async function handleLogin(event) {
     });
     state.session.logged_in = true;
     updateSessionUI();
-    await Promise.all([loadHome(), loadArtists(), loadAlbums(), loadTracks(), loadPlaylists(), loadFavorites(), loadSettings()]);
+    await Promise.all([loadHome(), loadArtists(), loadAlbums(), loadTracks(), loadPlaylists(), loadFavorites(), loadSettings(), loadConversionJobs()]);
   } catch (error) {
     alert(error.message);
   }
@@ -286,6 +354,10 @@ async function handleScanLibrary() {
 async function handleLogout() {
   await fetchJson('/api/logout', { method: 'POST' });
   state.session = { logged_in: false };
+  if (state.conversionTimer) {
+    window.clearInterval(state.conversionTimer);
+    state.conversionTimer = null;
+  }
   updateSessionUI();
   elements.loginPanel.classList.remove('hidden');
   elements.loginForm.reset();
@@ -402,11 +474,17 @@ async function addCurrentTrackToPlaylist(playlistId) {
 }
 
 document.querySelectorAll('.nav-item').forEach((button) => {
-  button.addEventListener('click', () => renderView(button.dataset.view));
+  button.addEventListener('click', () => {
+    renderView(button.dataset.view);
+    if (button.dataset.view === 'converter' && state.session.logged_in) {
+      loadConversionJobs().catch((error) => console.error(error));
+    }
+  });
 });
 
 elements.setupForm.addEventListener('submit', handleSetup);
 elements.loginForm.addEventListener('submit', handleLogin);
+document.getElementById('conversion-form').addEventListener('submit', handleConversion);
 elements.logoutButton.addEventListener('click', handleLogout);
 elements.scanLibraryButton.addEventListener('click', handleScanLibrary);
 elements.newPlaylistButton.addEventListener('click', createPlaylist);

@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -65,6 +66,19 @@ def init_db() -> None:
             media_key TEXT NOT NULL,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             UNIQUE (user_id, media_type, media_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS conversion_jobs (
+            id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            total INTEGER NOT NULL,
+            completed INTEGER NOT NULL DEFAULT 0,
+            output_dir TEXT NOT NULL,
+            outputs_json TEXT NOT NULL DEFAULT '[]',
+            errors_json TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
         """
     )
@@ -335,3 +349,60 @@ def get_random_albums(limit: int = 6) -> List[sqlite3.Row]:
     ).fetchall()
     connection.close()
     return rows
+
+
+def create_conversion_job(job_id: str, user_id: int, total: int, output_dir: str) -> None:
+    connection = get_connection()
+    connection.execute(
+        "INSERT INTO conversion_jobs(id, user_id, status, total, output_dir) VALUES(?, ?, 'queued', ?, ?)",
+        (job_id, user_id, total, output_dir),
+    )
+    connection.commit()
+    connection.close()
+
+
+def update_conversion_job(
+    job_id: str,
+    status: str,
+    completed: int,
+    outputs: List[str],
+    errors: List[Dict[str, str]],
+) -> None:
+    connection = get_connection()
+    connection.execute(
+        """
+        UPDATE conversion_jobs
+        SET status = ?, completed = ?, outputs_json = ?, errors_json = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ?
+        """,
+        (status, completed, json.dumps(outputs), json.dumps(errors), job_id),
+    )
+    connection.commit()
+    connection.close()
+
+
+def _conversion_job(row: sqlite3.Row) -> Dict[str, Any]:
+    result = dict(row)
+    result["outputs"] = json.loads(result.pop("outputs_json"))
+    result["errors"] = json.loads(result.pop("errors_json"))
+    return result
+
+
+def get_conversion_job(job_id: str, user_id: int) -> Optional[Dict[str, Any]]:
+    connection = get_connection()
+    row = connection.execute(
+        "SELECT * FROM conversion_jobs WHERE id = ? AND user_id = ?",
+        (job_id, user_id),
+    ).fetchone()
+    connection.close()
+    return _conversion_job(row) if row else None
+
+
+def list_conversion_jobs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+    connection = get_connection()
+    rows = connection.execute(
+        "SELECT * FROM conversion_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",
+        (user_id, limit),
+    ).fetchall()
+    connection.close()
+    return [_conversion_job(row) for row in rows]

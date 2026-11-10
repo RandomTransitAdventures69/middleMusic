@@ -1,11 +1,17 @@
 import os
 import secrets
+import json
+import re
+import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 from flask import Flask, abort, jsonify, request, send_file, session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from .config import ARTWORK_DIR, DATA_DIR, LIBRARY_PATH
+from .conversion_jobs import start_conversion_job
+from .converter import BITRATES, parse_csv
 from .database import (
     create_playlist,
     create_user,
@@ -13,6 +19,8 @@ from .database import (
     get_albums,
     get_artists,
     get_favorites,
+    get_conversion_job,
+    list_conversion_jobs,
     get_playlists_for_user,
     get_recent_tracks,
     get_random_albums,
@@ -30,6 +38,7 @@ from .scanner import scan_library
 
 def create_app():
     app = Flask(__name__, static_folder="../static", template_folder="../templates")
+    app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
     secret_key_path = DATA_DIR / "session-secret"
     secret_key = os.environ.get("SECRET_KEY")
     if not secret_key:
@@ -50,6 +59,25 @@ def create_app():
         item.pop("path", None)
         item["artwork_url"] = f"/api/artwork/{item['id']}" if artwork_path else None
         return item
+
+    def serialize_conversion_job(job):
+        return {
+            "id": job["id"],
+            "status": job["status"],
+            "total": job["total"],
+            "completed": job["completed"],
+            "progress": round(job["completed"] / job["total"] * 100) if job["total"] else 0,
+            "outputs": [
+                {
+                    "name": name,
+                    "url": f"/api/conversions/{job['id']}/files/{quote(name)}",
+                }
+                for name in job["outputs"]
+            ],
+            "errors": job["errors"],
+            "created_at": job["created_at"],
+            "updated_at": job["updated_at"],
+        }
 
     @app.get("/")
     def index():
@@ -246,6 +274,80 @@ def create_app():
         add_track_to_playlist(playlist_id, track_id)
         return jsonify({"success": True})
 
+    @app.post("/api/conversions")
+    def submit_conversion():
+        requires_login()
+        csv_file = request.files.get("csv_file")
+        if csv_file is None or not csv_file.filename:
+            return jsonify({"error": "Choose a CSV file to convert."}), 400
+        content = csv_file.read(app.config["MAX_CONTENT_LENGTH"] + 1)
+        if len(content) > app.config["MAX_CONTENT_LENGTH"]:
+            return jsonify({"error": "CSV files must be 5 MB or smaller."}), 413
+        try:
+            mapping = json.loads(request.form.get("mapping", "{}"))
+            if not isinstance(mapping, dict) or not all(
+                isinstance(key, str) and isinstance(value, str) for key, value in mapping.items()
+            ):
+                raise ValueError("Column mapping must contain text values.")
+            rows = parse_csv(content, mapping)
+        except (json.JSONDecodeError, ValueError) as error:
+            return jsonify({"error": str(error)}), 400
+
+        bitrate = request.form.get("bitrate", "192k")
+        if bitrate not in BITRATES:
+            return jsonify({"error": "Choose a supported MP3 bitrate."}), 400
+
+        folder_name = request.form.get("output_directory", "Converted Files").strip()
+        if not folder_name:
+            folder_name = "Converted Files"
+        if len(folder_name) > 80 or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _.()-]*", folder_name):
+            return jsonify({"error": "Output folder may contain only letters, numbers, spaces, and -_.()."}), 400
+
+        library_root = Path(get_setting("library_path") or LIBRARY_PATH)
+        if not library_root.is_dir():
+            return jsonify({"error": "The configured music library folder is unavailable."}), 400
+        job_id = uuid.uuid4().hex
+        output_root = (DATA_DIR / "converted").resolve()
+        output_dir = (output_root / folder_name / job_id).resolve()
+        try:
+            output_dir.relative_to(output_root)
+        except ValueError:
+            return jsonify({"error": "Invalid output folder."}), 400
+
+        start_conversion_job(job_id, session["user_id"], rows, library_root, output_dir, bitrate)
+        return jsonify({"success": True, "job": {"id": job_id, "status": "queued"}}), 202
+
+    @app.get("/api/conversions")
+    def conversions():
+        requires_login()
+        return jsonify(
+            {
+                "jobs": [
+                    serialize_conversion_job(job)
+                    for job in list_conversion_jobs(session["user_id"])
+                ]
+            }
+        )
+
+    @app.get("/api/conversions/<job_id>")
+    def conversion_status(job_id: str):
+        requires_login()
+        job = get_conversion_job(job_id, session["user_id"])
+        if job is None:
+            abort(404)
+        return jsonify({"job": serialize_conversion_job(job)})
+
+    @app.get("/api/conversions/<job_id>/files/<path:filename>")
+    def download_conversion_output(job_id: str, filename: str):
+        requires_login()
+        job = get_conversion_job(job_id, session["user_id"])
+        if job is None or filename not in job["outputs"] or Path(filename).name != filename:
+            abort(404)
+        output_path = Path(job["output_dir"]) / filename
+        if not output_path.is_file():
+            abort(404)
+        return send_file(output_path, as_attachment=True, download_name=filename)
+
     @app.get("/api/stream/<int:track_id>")
     def stream_track(track_id: int):
         requires_login()
@@ -305,6 +407,10 @@ def create_app():
 
     @app.route("/search")
     def search_redirect():
+        return app.send_static_file("index.html")
+
+    @app.route("/conversions")
+    def conversions_redirect():
         return app.send_static_file("index.html")
 
     return app
