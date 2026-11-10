@@ -11,9 +11,8 @@ from unittest.mock import patch
 
 from mutagen.mp3 import MP3
 
-from middlemusic import create_app
+from middlemusic import create_app, spotify
 from middlemusic.converter import convert_rows, parse_csv
-from middlemusic import spotify
 
 
 class ConverterTests(unittest.TestCase):

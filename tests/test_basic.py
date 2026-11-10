@@ -1,11 +1,11 @@
+import tempfile
 import unittest
 from pathlib import Path
-import tempfile
 from unittest.mock import patch
 
-from middlemusic.database import init_db, get_setting, set_setting, count_rows
-from middlemusic.config import DATA_DIR
 from middlemusic import create_app
+from middlemusic.config import DATA_DIR
+from middlemusic.database import count_rows, get_setting, init_db, set_setting
 
 
 class BasicAppTests(unittest.TestCase):

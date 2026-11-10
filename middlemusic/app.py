@@ -1,7 +1,7 @@
-import os
-import secrets
 import json
+import os
 import re
+import secrets
 import uuid
 from pathlib import Path
 from urllib.parse import quote
@@ -13,25 +13,25 @@ from .config import ARTWORK_DIR, DATA_DIR, LIBRARY_PATH
 from .conversion_jobs import start_conversion_job
 from .converter import BITRATES, parse_csv
 from .database import (
+    add_track_to_playlist,
+    count_rows,
     create_playlist,
     create_user,
-    count_rows,
     get_albums,
     get_artists,
-    get_favorites,
     get_conversion_job,
-    list_conversion_jobs,
+    get_favorites,
     get_playlists_for_user,
-    get_recent_tracks,
     get_random_albums,
+    get_recent_tracks,
     get_setting,
     get_track_by_id,
     get_tracks,
     get_user_by_username,
     init_db,
+    list_conversion_jobs,
     set_setting,
     toggle_favorite,
-    add_track_to_playlist,
 )
 from .scanner import scan_library
 

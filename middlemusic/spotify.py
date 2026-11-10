@@ -1,17 +1,18 @@
+from __future__ import annotations
+
 import base64
 import json
 import os
 import re
 import threading
 import time
-from typing import Dict, Optional
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 _TRACK_ID = re.compile(r"^[A-Za-z0-9]{22}$")
 _token_lock = threading.Lock()
-_cached_token: Optional[str] = None
+_cached_token: str | None = None
 _token_expires_at = 0.0
 
 
@@ -42,7 +43,7 @@ def _access_token() -> str:
             raise RuntimeError(
                 "Set SPOTIFY_CLIENT_ID and SPOTIFY_CLIENT_SECRET to look up Spotify metadata."
             )
-        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode("utf-8")).decode("ascii")
+        credentials = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode("ascii")
         request = Request(
             "https://accounts.spotify.com/api/token",
             data=b"grant_type=client_credentials",
@@ -67,7 +68,7 @@ def _access_token() -> str:
         return token
 
 
-def get_track_metadata(reference: str) -> Dict[str, str]:
+def get_track_metadata(reference: str) -> dict[str, str]:
     track_id = parse_track_id(reference)
     request = Request(
         f"https://api.spotify.com/v1/tracks/{track_id}",

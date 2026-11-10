@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import json
 import sqlite3
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .config import DB_PATH
 
@@ -86,7 +87,7 @@ def init_db() -> None:
     connection.close()
 
 
-def get_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+def get_setting(key: str, default: str | None = None) -> str | None:
     connection = get_connection()
     row = connection.execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     connection.close()
@@ -105,14 +106,14 @@ def set_setting(key: str, value: str) -> None:
     connection.close()
 
 
-def list_users() -> List[sqlite3.Row]:
+def list_users() -> list[sqlite3.Row]:
     connection = get_connection()
     rows = connection.execute("SELECT * FROM users ORDER BY username").fetchall()
     connection.close()
     return rows
 
 
-def get_user_by_username(username: str) -> Optional[sqlite3.Row]:
+def get_user_by_username(username: str) -> sqlite3.Row | None:
     connection = get_connection()
     row = connection.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
     connection.close()
@@ -138,14 +139,14 @@ def count_rows(table_name: str) -> int:
     return int(result["count"])
 
 
-def upsert_track(metadata: Dict[str, Any]) -> bool:
+def upsert_track(metadata: dict[str, Any]) -> bool:
     connection = get_connection()
     fetch = connection.execute(
         "SELECT id FROM tracks WHERE path = ?",
         (metadata["path"],),
     ).fetchone()
     if fetch is None:
-        cursor = connection.execute(
+        connection.execute(
             """
             INSERT INTO tracks(path, title, artist, album, album_artist, genre, duration, track_number, year, artwork_path)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -190,7 +191,7 @@ def upsert_track(metadata: Dict[str, Any]) -> bool:
     return False
 
 
-def list_track_paths() -> List[str]:
+def list_track_paths() -> list[str]:
     connection = get_connection()
     rows = connection.execute("SELECT path FROM tracks ORDER BY path").fetchall()
     connection.close()
@@ -204,10 +205,10 @@ def delete_track_by_path(path: str) -> None:
     connection.close()
 
 
-def get_tracks(limit: int = 200, query: str = "") -> List[sqlite3.Row]:
+def get_tracks(limit: int = 200, query: str = "") -> list[sqlite3.Row]:
     connection = get_connection()
     sql = "SELECT * FROM tracks"
-    params: List[Any] = []
+    params: list[Any] = []
     if query:
         sql += " WHERE lower(title || ' ' || artist || ' ' || album || ' ' || genre) LIKE lower(?)"
         params.append(f"%{query}%")
@@ -218,14 +219,14 @@ def get_tracks(limit: int = 200, query: str = "") -> List[sqlite3.Row]:
     return rows
 
 
-def get_track_by_id(track_id: int) -> Optional[sqlite3.Row]:
+def get_track_by_id(track_id: int) -> sqlite3.Row | None:
     connection = get_connection()
     row = connection.execute("SELECT * FROM tracks WHERE id = ?", (track_id,)).fetchone()
     connection.close()
     return row
 
 
-def get_artists() -> List[sqlite3.Row]:
+def get_artists() -> list[sqlite3.Row]:
     connection = get_connection()
     rows = connection.execute(
         "SELECT artist, COUNT(id) AS track_count FROM tracks GROUP BY artist ORDER BY artist"
@@ -234,7 +235,7 @@ def get_artists() -> List[sqlite3.Row]:
     return rows
 
 
-def get_albums() -> List[sqlite3.Row]:
+def get_albums() -> list[sqlite3.Row]:
     connection = get_connection()
     rows = connection.execute(
         "SELECT album, album_artist AS artist, COUNT(id) AS track_count FROM tracks GROUP BY album, album_artist ORDER BY album"
@@ -243,7 +244,7 @@ def get_albums() -> List[sqlite3.Row]:
     return rows
 
 
-def get_playlists_for_user(user_id: int) -> List[sqlite3.Row]:
+def get_playlists_for_user(user_id: int) -> list[sqlite3.Row]:
     connection = get_connection()
     playlists = connection.execute(
         "SELECT * FROM playlists WHERE user_id = ? ORDER BY created_at DESC",
@@ -315,7 +316,7 @@ def toggle_favorite(user_id: int, media_type: str, media_key: str) -> bool:
     return True
 
 
-def get_favorites(user_id: int) -> Dict[str, List[str]]:
+def get_favorites(user_id: int) -> dict[str, list[str]]:
     connection = get_connection()
     favorites = connection.execute(
         "SELECT media_type, media_key FROM favorites WHERE user_id = ? ORDER BY media_type, media_key",
@@ -331,7 +332,7 @@ def get_favorites(user_id: int) -> Dict[str, List[str]]:
     return result
 
 
-def get_recent_tracks(limit: int = 8) -> List[sqlite3.Row]:
+def get_recent_tracks(limit: int = 8) -> list[sqlite3.Row]:
     connection = get_connection()
     rows = connection.execute(
         "SELECT * FROM tracks ORDER BY added_at DESC LIMIT ?",
@@ -341,7 +342,7 @@ def get_recent_tracks(limit: int = 8) -> List[sqlite3.Row]:
     return rows
 
 
-def get_random_albums(limit: int = 6) -> List[sqlite3.Row]:
+def get_random_albums(limit: int = 6) -> list[sqlite3.Row]:
     connection = get_connection()
     rows = connection.execute(
         "SELECT album, album_artist AS artist, COUNT(id) AS track_count, MIN(artwork_path) AS artwork_path FROM tracks GROUP BY album, album_artist ORDER BY RANDOM() LIMIT ?",
@@ -365,8 +366,8 @@ def update_conversion_job(
     job_id: str,
     status: str,
     completed: int,
-    outputs: List[str],
-    errors: List[Dict[str, str]],
+    outputs: list[str],
+    errors: list[dict[str, str]],
 ) -> None:
     connection = get_connection()
     connection.execute(
@@ -381,14 +382,14 @@ def update_conversion_job(
     connection.close()
 
 
-def _conversion_job(row: sqlite3.Row) -> Dict[str, Any]:
+def _conversion_job(row: sqlite3.Row) -> dict[str, Any]:
     result = dict(row)
     result["outputs"] = json.loads(result.pop("outputs_json"))
     result["errors"] = json.loads(result.pop("errors_json"))
     return result
 
 
-def get_conversion_job(job_id: str, user_id: int) -> Optional[Dict[str, Any]]:
+def get_conversion_job(job_id: str, user_id: int) -> dict[str, Any] | None:
     connection = get_connection()
     row = connection.execute(
         "SELECT * FROM conversion_jobs WHERE id = ? AND user_id = ?",
@@ -398,7 +399,7 @@ def get_conversion_job(job_id: str, user_id: int) -> Optional[Dict[str, Any]]:
     return _conversion_job(row) if row else None
 
 
-def list_conversion_jobs(user_id: int, limit: int = 20) -> List[Dict[str, Any]]:
+def list_conversion_jobs(user_id: int, limit: int = 20) -> list[dict[str, Any]]:
     connection = get_connection()
     rows = connection.execute(
         "SELECT * FROM conversion_jobs WHERE user_id = ? ORDER BY created_at DESC LIMIT ?",

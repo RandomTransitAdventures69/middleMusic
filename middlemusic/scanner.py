@@ -1,12 +1,15 @@
+from __future__ import annotations
+
 import hashlib
 import logging
 import os
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any
 
 from mutagen import File as MutagenFile
+
 from .config import ARTWORK_DIR
-from .database import upsert_track, delete_track_by_path, list_track_paths
+from .database import delete_track_by_path, list_track_paths, upsert_track
 
 AUDIO_EXTENSIONS = {".mp3", ".flac", ".aac", ".m4a", ".ogg", ".oga", ".wav", ".opus"}
 logger = logging.getLogger(__name__)
@@ -20,7 +23,7 @@ def _normalize_text(value: Any) -> str:
     return str(value)
 
 
-def _safe_int(value: Any) -> Optional[int]:
+def _safe_int(value: Any) -> int | None:
     if value is None:
         return None
     if isinstance(value, str):
@@ -35,7 +38,7 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
-def _find_artwork(audio: Any, file_path: str) -> Optional[str]:
+def _find_artwork(audio: Any, file_path: str) -> str | None:
     try:
         image = None
         tags = getattr(audio, "tags", {}) or {}
@@ -63,7 +66,7 @@ def _find_artwork(audio: Any, file_path: str) -> Optional[str]:
     return None
 
 
-def extract_metadata(file_path: str) -> Optional[Dict[str, Any]]:
+def extract_metadata(file_path: str) -> dict[str, Any] | None:
     try:
         audio = MutagenFile(file_path, easy=False)
     except Exception:
@@ -132,7 +135,7 @@ def extract_metadata(file_path: str) -> Optional[Dict[str, Any]]:
     }
 
 
-def scan_library(root_path: str) -> Dict[str, int]:
+def scan_library(root_path: str) -> dict[str, int]:
     root = Path(root_path)
     if not root.exists() or not root.is_dir():
         raise FileNotFoundError(f"Library path does not exist: {root_path}")

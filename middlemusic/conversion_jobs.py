@@ -1,6 +1,5 @@
 from pathlib import Path
 from threading import Thread
-from typing import Dict, List
 
 from .converter import convert_rows
 from .database import create_conversion_job, update_conversion_job
@@ -8,16 +7,16 @@ from .database import create_conversion_job, update_conversion_job
 
 def _process(
     job_id: str,
-    rows: List[Dict[str, str]],
+    rows: list[dict[str, str]],
     library_root: Path,
     output_dir: Path,
     bitrate: str,
 ) -> None:
-    outputs: List[str] = []
-    errors: List[Dict[str, str]] = []
+    outputs: list[str] = []
+    errors: list[dict[str, str]] = []
     update_conversion_job(job_id, "running", 0, outputs, errors)
 
-    def report_progress(completed: int, total: int, result: Dict[str, str]) -> None:
+    def report_progress(completed: int, total: int, result: dict[str, str]) -> None:
         if result["status"] == "completed":
             outputs.append(result["output"])
         else:
@@ -42,7 +41,7 @@ def _process(
 def start_conversion_job(
     job_id: str,
     user_id: int,
-    rows: List[Dict[str, str]],
+    rows: list[dict[str, str]],
     library_root: Path,
     output_dir: Path,
     bitrate: str,

@@ -1,10 +1,13 @@
+from __future__ import annotations
+
 import csv
 import io
 import re
 import shutil
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Callable
 
 from .scanner import AUDIO_EXTENSIONS, extract_metadata
 from .spotify import get_track_metadata as get_spotify_metadata
@@ -23,7 +26,7 @@ MAPPED_FIELDS = (
 )
 
 
-def parse_csv(content: bytes, mapping: Dict[str, str]) -> List[Dict[str, str]]:
+def parse_csv(content: bytes, mapping: dict[str, str]) -> list[dict[str, str]]:
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as error:
@@ -98,7 +101,7 @@ def _safe_filename(value: str) -> str:
     return cleaned[:160] or "untitled"
 
 
-def _output_path(metadata: Dict[str, object], source: Path, output_dir: Path) -> Path:
+def _output_path(metadata: dict[str, object], source: Path, output_dir: Path) -> Path:
     title = str(metadata.get("title") or source.stem)
     artist = str(metadata.get("artist") or "")
     filename = _safe_filename(f"{artist} - {title}" if artist else title) + ".mp3"
@@ -113,7 +116,7 @@ def _output_path(metadata: Dict[str, object], source: Path, output_dir: Path) ->
 def _transcode(
     source: Path,
     output: Path,
-    metadata: Dict[str, object],
+    metadata: dict[str, object],
     bitrate: str,
 ) -> None:
     arguments = [
@@ -155,23 +158,23 @@ def _transcode(
 
 
 def convert_rows(
-    rows: Iterable[Dict[str, str]],
+    rows: Iterable[dict[str, str]],
     library_root: Path,
     output_dir: Path,
     bitrate: str = "192k",
-    progress: Optional[Callable[[int, int, Optional[Dict[str, str]]], None]] = None,
-) -> Tuple[List[str], List[Dict[str, str]]]:
+    progress: Callable[[int, int, dict[str, str] | None], None] | None = None,
+) -> tuple[list[str], list[dict[str, str]]]:
     if bitrate not in BITRATES:
         raise ValueError(f"Bitrate must be one of: {', '.join(sorted(BITRATES))}.")
 
     items = list(rows)
     output_dir.mkdir(parents=True, exist_ok=True)
-    outputs: List[str] = []
-    errors: List[Dict[str, str]] = []
+    outputs: list[str] = []
+    errors: list[dict[str, str]] = []
 
     for index, row in enumerate(items, start=1):
-        result: Optional[Dict[str, str]] = None
-        output: Optional[Path] = None
+        result: dict[str, str] | None = None
+        output: Path | None = None
         try:
             source = _resolve_source(row.get("source", ""), library_root)
             metadata = extract_metadata(str(source)) or {}

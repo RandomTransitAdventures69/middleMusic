@@ -1,7 +1,6 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import Dict
 
 from .config import LIBRARY_PATH
 from .converter import BITRATES, MAPPED_FIELDS, convert_rows, parse_csv
@@ -28,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    mapping: Dict[str, str] = {
+    mapping: dict[str, str] = {
         field: getattr(args, f"{field}_column")
         for field in MAPPED_FIELDS
     }
