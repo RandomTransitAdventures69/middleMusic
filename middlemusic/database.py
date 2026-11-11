@@ -27,6 +27,7 @@ def init_db() -> None:
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            subsonic_password TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
 
@@ -83,6 +84,11 @@ def init_db() -> None:
         );
         """
     )
+    user_columns = {
+        row["name"] for row in connection.execute("PRAGMA table_info(users)")
+    }
+    if "subsonic_password" not in user_columns:
+        connection.execute("ALTER TABLE users ADD COLUMN subsonic_password TEXT")
     connection.commit()
     connection.close()
 
@@ -124,11 +130,13 @@ def get_user_by_username(username: str) -> sqlite3.Row | None:
     return row
 
 
-def create_user(username: str, password_hash: str) -> sqlite3.Row:
+def create_user(
+    username: str, password_hash: str, subsonic_password: str | None = None
+) -> sqlite3.Row:
     connection = get_connection()
     cursor = connection.execute(
-        "INSERT INTO users(username, password_hash) VALUES(?, ?)",
-        (username, password_hash),
+        "INSERT INTO users(username, password_hash, subsonic_password) VALUES(?, ?, ?)",
+        (username, password_hash, subsonic_password),
     )
     connection.commit()
     row = connection.execute(
@@ -136,6 +144,16 @@ def create_user(username: str, password_hash: str) -> sqlite3.Row:
     ).fetchone()
     connection.close()
     return row
+
+
+def set_subsonic_password(username: str, encrypted_password: str) -> None:
+    connection = get_connection()
+    connection.execute(
+        "UPDATE users SET subsonic_password = ? WHERE username = ?",
+        (encrypted_password, username),
+    )
+    connection.commit()
+    connection.close()
 
 
 def count_rows(table_name: str) -> int:

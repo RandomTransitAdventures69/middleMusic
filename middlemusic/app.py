@@ -30,13 +30,16 @@ from .database import (
     init_db,
     list_conversion_jobs,
     set_setting,
+    set_subsonic_password,
     toggle_favorite,
 )
 from .scanner import scan_library
+from .subsonic import register_subsonic_api
+from .subsonic_auth import encrypt_password
 
 
 def create_app():
-    app = Flask(__name__, static_folder="../static", template_folder="../templates")
+    app = Flask(__name__, static_folder="static")
     app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
     secret_key_path = DATA_DIR / "session-secret"
     secret_key = os.environ.get("SECRET_KEY")
@@ -134,7 +137,11 @@ def create_app():
                 {"error": "That music folder does not exist or is not a folder."}
             ), 400
 
-        user = create_user(username, generate_password_hash(password))
+        user = create_user(
+            username,
+            generate_password_hash(password),
+            encrypt_password(password, app.config["SECRET_KEY"]),
+        )
         set_setting("library_path", library_path)
         set_setting("server_name", server_name)
         session["user_id"] = user["id"]
@@ -169,6 +176,10 @@ def create_app():
         if user is None or not check_password_hash(user["password_hash"], password):
             return jsonify({"error": "Invalid username or password."}), 401
 
+        if not user["subsonic_password"]:
+            set_subsonic_password(
+                username, encrypt_password(password, app.config["SECRET_KEY"])
+            )
         session["user_id"] = user["id"]
         session["username"] = user["username"]
         return jsonify(
@@ -519,4 +530,5 @@ def create_app():
     def conversions_redirect():
         return app.send_static_file("index.html")
 
+    register_subsonic_api(app)
     return app
